@@ -1,14 +1,20 @@
-package net.unit8.websocket.classloader;
+package net.unit8.wscl;
 
 /**
- * Created by tie199026 on 14/03/06.
+ * Response for loading a class.
+ *
+ * @author kawasima
  */
 public class ClassResponse {
     private String className;
     private byte[] bytes;
 
-    public ClassResponse(String className, byte[] bytes) {
+    public ClassResponse(String className) {
         this.className = className;
+    }
+
+    public ClassResponse(String className, byte[] bytes) {
+        this(className);
         this.bytes = bytes;
     }
 

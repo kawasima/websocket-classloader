@@ -1,4 +1,4 @@
-package net.unit8.websocket.classloader;
+package net.unit8.wscl;
 
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.ChannelPipeline;
@@ -13,10 +13,14 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 
 /**
- * Created by tie199026 on 14/03/06.
+ * Provide classes via WebSocket.
+ *
+ * @author kawasima
  */
 public class ClassProvider {
-    public void start(int port) {
+    private ServerBootstrap bootstrap;
+
+    public ServerBootstrap start(int port) {
         ServerBootstrap bootstrap = new ServerBootstrap(
                 new NioServerSocketChannelFactory(
                         Executors.newCachedThreadPool(),
@@ -37,9 +41,13 @@ public class ClassProvider {
                 }
         );
         bootstrap.bind(new InetSocketAddress(port));
+        this.bootstrap = bootstrap;
+        return bootstrap;
     }
 
-    public static void main(String[] args) {
-        new ClassProvider().start(5000);
+    public void stop() {
+        if (bootstrap != null)
+            bootstrap.shutdown();
     }
+
 }
