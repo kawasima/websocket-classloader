@@ -2,6 +2,7 @@ websocket-classloader
 =====================
 
 A ClassLoader loading remote java class via WebSocket.
+[![Build Status](https://travis-ci.org/kawasima/websocket-classloader.png?branch=master)](https://travis-ci.org/kawasima/websocket-classloader)
 
 ## コンセプト
 
