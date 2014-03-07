@@ -11,3 +11,39 @@ A ClassLoader loading remote java class via WebSocket.
 
 websocket-classloaderは、そんな分散マシン向けのクラスローダーです。クラスロード要求に応じて、CrassProviderサーバに要求を転送し、CrassProviderサーバではクラスのバイナリーを探しだしてレスポンス返します。
 
+
+## Usage
+
+ClassProviderを起動します。
+
+```java
+new ClassProvider().start(port);
+```
+
+クライアント側は、ClassProviderのアドレスを指定して、WebSocketClassLoaderを作ります。
+
+```java
+ClassLoader cl = new WebSocketClassLoader("ws://class-provider-host:port");
+Class<?> hogeClass = cl.loadClass("org.example.HogeHoge", true);
+```
+
+## アーキテクチャ
+
+                class binary format
+            +-----------------------------------------------+
+            v                                               |
+    +----------------------+  loadClass request     +---------------+
+    |   Thin Application   |  (WebSocket)           | ClassProvider |
+    | WebSocketClassLoader | ---------------------> |               |
+    +----------------------+                        +---------------+
+
+
+WebSocketClassLoaderを使う側のアプリケーション(クライアントと呼ぶ)から、ClassProvierへWebSocketのコネクションを作成し、クライアントからloadClassが呼ばれたときに、ClassProviderへリクエストを飛ばし、クラスのバイナリフォーマットが帰ってきます。
+
+データのシリアライズにはFressianを使っています。
+
+## License
+
+Apache License 2.0
+(c) 2014 Yoshitaka Kawashima
+
