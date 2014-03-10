@@ -10,6 +10,8 @@ import org.jboss.netty.handler.codec.http.HttpRequestDecoder;
 import org.jboss.netty.handler.codec.http.HttpResponseEncoder;
 
 import java.net.InetSocketAddress;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.concurrent.Executors;
 
 /**
@@ -19,7 +21,11 @@ import java.util.concurrent.Executors;
  */
 public class ClassProvider {
     private ServerBootstrap bootstrap;
+    private FindResourceHandler findResourceHandler;
 
+    public ClassProvider() {
+        findResourceHandler = new FindResourceHandler();
+    }
     public ServerBootstrap start(int port) {
         ServerBootstrap bootstrap = new ServerBootstrap(
                 new NioServerSocketChannelFactory(
@@ -35,7 +41,7 @@ public class ClassProvider {
                         pipeline.addLast("decoder", new HttpRequestDecoder());
                         pipeline.addLast("aggregator", new HttpChunkAggregator(65536));
                         pipeline.addLast("encoder", new HttpResponseEncoder());
-                        pipeline.addLast("handler", new FindClassHandler());
+                        pipeline.addLast("handler", findResourceHandler);
                         return pipeline;
                     }
                 }
@@ -45,6 +51,10 @@ public class ClassProvider {
         return bootstrap;
     }
 
+    public void setClasspath(URL[] urls) {
+        findResourceHandler.setClassLoader(
+                new URLClassLoader(urls));
+    }
     public void stop() {
         if (bootstrap != null)
             bootstrap.shutdown();

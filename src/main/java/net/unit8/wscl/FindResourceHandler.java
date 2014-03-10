@@ -1,7 +1,9 @@
 package net.unit8.wscl;
 
-import net.unit8.wscl.handler.ClassRequestReadHandler;
-import net.unit8.wscl.handler.ClassResponseWriteHandler;
+import net.unit8.wscl.dto.ResourceRequest;
+import net.unit8.wscl.dto.ResourceResponse;
+import net.unit8.wscl.handler.ResourceRequestReadHandler;
+import net.unit8.wscl.handler.ResourceResponseWriteHandler;
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
 import org.fressian.handlers.ILookup;
@@ -30,10 +32,14 @@ import java.util.Map;
  *
  * @author kawasima
  */
-public class FindClassHandler extends SimpleChannelUpstreamHandler {
-    private static Logger logger = LoggerFactory.getLogger(FindClassHandler.class);
+public class FindResourceHandler extends SimpleChannelUpstreamHandler {
+    private static Logger logger = LoggerFactory.getLogger(FindResourceHandler.class);
     private WebSocketServerHandshaker handshaker;
+    private ClassLoader loader;
 
+    public void setClassLoader(ClassLoader loader) {
+        this.loader = loader;
+    }
     @Override
     public void messageReceived(
             ChannelHandlerContext ctx, MessageEvent e) throws Exception {
@@ -73,18 +79,20 @@ public class FindClassHandler extends SimpleChannelUpstreamHandler {
             FressianReader fr = new FressianReader(bais, new ILookup<Object, ReadHandler>() {
                 @Override
                 public ReadHandler valAt(Object key) {
-                    if (key.equals(ClassRequest.class.getName()))
-                        return new ClassRequestReadHandler();
+                    if (key.equals(ResourceRequest.class.getName()))
+                        return new ResourceRequestReadHandler();
                     else
                         return null;
                 }
             });
-            ClassRequest req = (ClassRequest) fr.readObject();
+            ResourceRequest req = (ResourceRequest) fr.readObject();
+            ClassLoader cl = loader==null ? Thread.currentThread().getContextClassLoader() : loader;
 
-            ClassLoader cl = Thread.currentThread().getContextClassLoader();
-            URL url = cl.getResource(req.getClassName().replace('.', '/') + ".class");
-            ClassResponse res = new ClassResponse(req.getClassName());
-            if (url != null) {
+            URL url = cl.getResource(req.getResourceName());
+            ResourceResponse res = new ResourceResponse(req.getResourceName());
+            if (url == null)
+                res.notFound();
+            if (url != null && !req.isCheckOnly()) {
                 in = url.openStream();
                 res.setBytes(toByteArray(in));
             }
@@ -93,8 +101,7 @@ public class FindClassHandler extends SimpleChannelUpstreamHandler {
             FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
                 @Override
                 public Map<String, WriteHandler> valAt(Class key) {
-                    return FressianUtils.map(ClassResponse.class.getName(),
-                            new ClassResponseWriteHandler());
+                    return FressianUtils.map(ResourceResponse.class.getName(), new ResourceResponseWriteHandler());
                 }
             });
             fw.writeObject(res);
