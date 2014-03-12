@@ -18,6 +18,6 @@ public class ResourceResponseWriteHandler implements WriteHandler {
         ResourceResponse response = (ResourceResponse) instance;
         w.writeString(response.getResourceName());
         w.writeBytes(response.getBytes());
-        w.writeBoolean(response.exists());
+        w.writeBytes(response.getDigest());
     }
 }

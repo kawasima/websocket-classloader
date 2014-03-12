@@ -18,6 +18,6 @@ public class ResourceResponseReadHandler implements ReadHandler {
         return new ResourceResponse(
                 (String)r.readObject(),
                 (byte[])r.readObject(),
-                r.readBoolean());
+                (byte[])r.readObject());
     }
 }

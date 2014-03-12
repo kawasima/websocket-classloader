@@ -6,6 +6,8 @@ import net.unit8.wscl.dto.ResourceRequest;
 import net.unit8.wscl.dto.ResourceResponse;
 import net.unit8.wscl.handler.ResourceRequestWriteHandler;
 import net.unit8.wscl.handler.ResourceResponseReadHandler;
+import net.unit8.wscl.util.FressianUtils;
+import net.unit8.wscl.util.IOUtils;
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
 import org.fressian.handlers.ILookup;
@@ -14,10 +16,7 @@ import org.fressian.handlers.WriteHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Map;
@@ -30,10 +29,13 @@ import java.util.concurrent.BlockingQueue;
 public class WebSocketURLConnection extends URLConnection {
     private static Logger logger = LoggerFactory.getLogger(WebSocketURLConnection.class);
     private WebSocket websocket;
+    private File cacheDirectory;
 
-    public WebSocketURLConnection(URL url, WebSocket websocket) {
+
+    public WebSocketURLConnection(URL url, WebSocket websocket, File cacheDirectory) {
         super(url);
         this.websocket = websocket;
+        this.cacheDirectory = cacheDirectory;
     }
 
     @Override
@@ -51,34 +53,43 @@ public class WebSocketURLConnection extends URLConnection {
                         new ResourceRequestWriteHandler());
             }
         });
-        try {
-            fw.writeObject(request);
-            listener = new ResourceReceiveListener(request.getResourceName());
-            websocket.addWebSocketListener(listener);
-        } catch(IOException ex) {
-            throw new RuntimeException(ex);
-        }
+        fw.writeObject(request);
+        listener = new ResourceReceiveListener(request.getResourceName());
+        websocket.addWebSocketListener(listener);
 
         try {
             logger.debug("fetch class:" + request.getResourceName());
             websocket.sendMessage(baos.toByteArray());
-            return listener.queue.take();
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
+            ResourceResponse response = listener.queue.take();
+            if (response == null)
+                throw new IOException("Websocket request error.");
+            if (cacheDirectory != null && !request.isCheckOnly()) {
+                IOUtils.spitQuietly(new File(cacheDirectory, url.getPath()), response.getBytes());
+            }
+            return response;
+        } catch (InterruptedException ex) {
+            throw new IOException(ex);
         } finally {
             websocket.removeWebSocketListener(listener);
         }
     }
 
-    public boolean existsUrl() throws IOException {
+    protected byte[] getResourceDigest() throws IOException {
         String resourcePath = getURL().getFile();
         ResourceResponse response = doRequest(new ResourceRequest(resourcePath, true));
-        return response.exists();
+        return response.getDigest();
     }
 
     @Override
     public InputStream getInputStream() {
-        String resourcePath = getURL().getFile();
+        if (!"ws".equalsIgnoreCase(getURL().getProtocol())) {
+            try {
+                return getURL().openStream();
+            } catch (IOException ex) {
+                return null;
+            }
+        }
+        String resourcePath = getURL().getPath();
         try {
             ResourceResponse response = doRequest(new ResourceRequest(resourcePath));
             return new ByteArrayInputStream(response.getBytes());
@@ -90,7 +101,10 @@ public class WebSocketURLConnection extends URLConnection {
 
     @Override
     public Object getContent() {
-        String resourcePath = getURL().getFile();
+        if (!"ws".equalsIgnoreCase(getURL().getProtocol())) {
+            return IOUtils.slurpQuietly(getURL());
+        }
+        String resourcePath = getURL().getPath();
         try {
             ResourceResponse response = doRequest(new ResourceRequest(resourcePath));
             return response.getBytes();
@@ -126,15 +140,16 @@ public class WebSocketURLConnection extends URLConnection {
                 if (response.getResourceName().equals(resourcePath)) {
                     queue.put(response);
                 }
-            } catch (Exception ex) {
-                ex.printStackTrace();
+            } catch (IOException ex) {
+                logger.warn("read response error", ex);
+            } catch (InterruptedException ex) {
+                logger.warn("interrupt error", ex);
             }
 
         }
 
         @Override
         public void onFragment(byte[] fragment, boolean last) {
-
         }
 
         @Override
@@ -152,6 +167,4 @@ public class WebSocketURLConnection extends URLConnection {
 
         }
     }
-
-
 }

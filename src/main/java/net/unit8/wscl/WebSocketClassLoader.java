@@ -4,12 +4,16 @@ import com.ning.http.client.AsyncHttpClient;
 import com.ning.http.client.websocket.WebSocket;
 import com.ning.http.client.websocket.WebSocketByteListener;
 import com.ning.http.client.websocket.WebSocketUpgradeHandler;
+import net.unit8.wscl.util.DigestUtils;
+import net.unit8.wscl.util.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.Arrays;
 
 /**
  * ClassLoader fetching classes via WebSocket.
@@ -19,10 +23,20 @@ import java.net.URLConnection;
 public class WebSocketClassLoader extends ClassLoader {
     private WebSocket websocket;
     private URL baseUrl;
+    private File cacheDirectory;
 
     private static Logger logger = LoggerFactory.getLogger(WebSocketClassLoader.class);
 
     public WebSocketClassLoader(String url) {
+        String cachePath = System.getProperty("wscl.cache.directory");
+        if (cachePath != null) {
+            cacheDirectory = new File(cachePath);
+            if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
+                throw new IllegalArgumentException(
+                        "Can't create cache directory: " + cachePath);
+            }
+        }
+
         AsyncHttpClient client = new AsyncHttpClient();
         try {
             websocket = client.prepareGet(url)
@@ -59,29 +73,45 @@ public class WebSocketClassLoader extends ClassLoader {
         try {
             URL httpUrl = new URL(url.replaceFirst("ws://", "http://"));
             baseUrl = new URL("ws", httpUrl.getHost(), httpUrl.getPort(), "",
-                    new WebSocketURLStreamHandler(websocket));
+                    new WebSocketURLStreamHandler(websocket, cacheDirectory));
         } catch (MalformedURLException e) {
             throw new RuntimeException("ClassProvider URL is invalid.", e);
         }
+    }
 
+    private URL findCache(URL url, byte[] digest) {
+        File cacheFile = new File(cacheDirectory, url.getPath());
+        if (cacheFile.exists() && Arrays.equals(digest, DigestUtils.md5hash(cacheFile))) {
+            try {
+                return cacheFile.toURI().toURL();
+            } catch (MalformedURLException e) {
+                return url;
+            }
+        } else {
+            return url;
+        }
     }
 
     protected URL findResource(String name) {
         URL url;
         try {
             url = new URL(baseUrl.getProtocol(), baseUrl.getHost(), baseUrl.getPort(),
-                    name, new WebSocketURLStreamHandler(websocket));
+                    name, new WebSocketURLStreamHandler(websocket, cacheDirectory));
         } catch (MalformedURLException e) {
             throw new IllegalArgumentException("name");
         }
 
         try {
             WebSocketURLConnection connection = (WebSocketURLConnection)url.openConnection();
-            return connection.existsUrl() ? url : null;
+            byte[] digest = connection.getResourceDigest();
+            if (digest == null)
+                return null;
+            return cacheDirectory != null ? findCache(url, digest) : url;
         } catch(Exception e) {
             return null;
         }
     }
+
 
     public Class<?> loadClass(String className, boolean resolve)
             throws ClassNotFoundException {
@@ -106,7 +136,7 @@ public class WebSocketClassLoader extends ClassLoader {
 
         try {
             URLConnection connection = url.openConnection();
-            byte[] bytes = (byte[]) connection.getContent();
+            byte[] bytes = IOUtils.slurp(connection.getContent());
             if (bytes != null) {
                 return defineClass(className, bytes, 0, bytes.length);
             } else {

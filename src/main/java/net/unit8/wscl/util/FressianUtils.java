@@ -1,4 +1,4 @@
-package net.unit8.wscl;
+package net.unit8.wscl.util;
 
 import java.util.Collections;
 import java.util.HashMap;

@@ -8,26 +8,26 @@ package net.unit8.wscl.dto;
 public class ResourceResponse {
     private String resourceName;
     private byte[] bytes;
-    private Boolean exists;
+    private byte[] digest;
 
     public ResourceResponse(String resourceName) {
         this.resourceName = resourceName;
-        this.exists = true;
+        this.digest = null;
     }
 
-    public ResourceResponse(String resourceName, byte[] bytes, Boolean exists) {
+    public ResourceResponse(String resourceName, byte[] bytes, byte[] digest) {
         this(resourceName);
         this.bytes = bytes;
-        this.exists = exists;
+        this.digest = digest;
     }
 
 
-    public Boolean exists() {
-        return exists;
+    public byte[] getDigest() {
+        return digest;
     }
 
-    public void notFound() {
-        this.exists = false;
+    public void setDigest(byte[] digest) {
+        this.digest = digest;
     }
 
     public String getResourceName() {
