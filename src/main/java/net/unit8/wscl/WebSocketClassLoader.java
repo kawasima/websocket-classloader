@@ -28,6 +28,10 @@ public class WebSocketClassLoader extends ClassLoader {
     private static Logger logger = LoggerFactory.getLogger(WebSocketClassLoader.class);
 
     public WebSocketClassLoader(String url) {
+        this(url, Thread.currentThread().getContextClassLoader());
+    }
+    public WebSocketClassLoader(String url, ClassLoader parent) {
+        super(parent);
         String cachePath = System.getProperty("wscl.cache.directory");
         if (cachePath != null) {
             cacheDirectory = new File(cachePath);
