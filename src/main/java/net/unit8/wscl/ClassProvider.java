@@ -55,6 +55,16 @@ public class ClassProvider {
         findResourceHandler.setClassLoader(
                 new URLClassLoader(urls));
     }
+
+    public URL[] getClasspath() {
+        ClassLoader loader = findResourceHandler.getClassLoader();
+        if (loader instanceof URLClassLoader) {
+            return ((URLClassLoader) loader).getURLs();
+        } else {
+            return new URL[0];
+        }
+    }
+
     public void stop() {
         if (bootstrap != null)
             bootstrap.shutdown();

@@ -39,6 +39,9 @@ public class FindResourceHandler extends SimpleChannelUpstreamHandler {
     private WebSocketServerHandshaker handshaker;
     private ClassLoader loader;
 
+    public ClassLoader getClassLoader() {
+        return loader != null ? loader : Thread.currentThread().getContextClassLoader();
+    }
     public void setClassLoader(ClassLoader loader) {
         this.loader = loader;
     }
