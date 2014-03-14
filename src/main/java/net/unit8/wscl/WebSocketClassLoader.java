@@ -6,6 +6,7 @@ import com.ning.http.client.websocket.WebSocketByteListener;
 import com.ning.http.client.websocket.WebSocketUpgradeHandler;
 import net.unit8.wscl.util.DigestUtils;
 import net.unit8.wscl.util.IOUtils;
+import net.unit8.wscl.util.PropertyUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,6 +15,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
 
 /**
  * ClassLoader fetching classes via WebSocket.
@@ -32,13 +34,11 @@ public class WebSocketClassLoader extends ClassLoader {
     }
     public WebSocketClassLoader(String url, ClassLoader parent) {
         super(parent);
-        String cachePath = System.getProperty("wscl.cache.directory");
-        if (cachePath != null) {
-            cacheDirectory = new File(cachePath);
-            if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
-                throw new IllegalArgumentException(
-                        "Can't create cache directory: " + cachePath);
-            }
+        cacheDirectory = PropertyUtils.getFileSystemProperty("wscl.cache.directory");
+
+        if (cacheDirectory != null && !cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
+            throw new IllegalArgumentException(
+                    "Can't create cache directory: " + cacheDirectory);
         }
 
         AsyncHttpClient client = new AsyncHttpClient();
@@ -69,7 +69,8 @@ public class WebSocketClassLoader extends ClassLoader {
                                 public void onError(Throwable throwable) {
                                 }
                             }
-                    ).build()).get();
+                    ).build())
+                    .get(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000), TimeUnit.MILLISECONDS);
             logger.debug("new websocket classloader");
         } catch (Exception ex) {
             throw new RuntimeException(ex);

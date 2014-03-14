@@ -8,6 +8,7 @@ import net.unit8.wscl.handler.ResourceRequestWriteHandler;
 import net.unit8.wscl.handler.ResourceResponseReadHandler;
 import net.unit8.wscl.util.FressianUtils;
 import net.unit8.wscl.util.IOUtils;
+import net.unit8.wscl.util.PropertyUtils;
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
 import org.fressian.handlers.ILookup;
@@ -22,6 +23,7 @@ import java.net.URLConnection;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author kawasima
@@ -60,11 +62,15 @@ public class WebSocketURLConnection extends URLConnection {
         try {
             logger.debug("fetch class:" + request.getResourceName());
             websocket.sendMessage(baos.toByteArray());
-            ResourceResponse response = listener.queue.take();
+            ResourceResponse response = listener.queue.poll(
+                    PropertyUtils.getLongSystemProperty("wscl.timeout", 5000),
+                    TimeUnit.MILLISECONDS);
             if (response == null)
                 throw new IOException("Websocket request error.");
             if (cacheDirectory != null && !request.isCheckOnly()) {
-                IOUtils.spitQuietly(new File(cacheDirectory, url.getPath()), response.getBytes());
+                IOUtils.spitQuietly(
+                        new File(cacheDirectory, url.getPath()),
+                        response.getBytes());
             }
             return response;
         } catch (InterruptedException ex) {
