@@ -80,4 +80,9 @@ public class IOUtils {
 
         }
     }
+    
+    private IOUtils()     //class IOUtils cannot be instantiated.
+    {
+    	
+    }
 }
