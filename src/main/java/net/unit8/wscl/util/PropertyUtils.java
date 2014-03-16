@@ -17,6 +17,8 @@ public class PropertyUtils {
     private static final Pattern VAR_PTN = Pattern.compile("\\$\\{([^\\}]+)\\}");
 
     private static String replace(String value) {
+        if (value == null)
+            return null;
         StringBuffer sb = new StringBuffer(256);
         Matcher m = VAR_PTN.matcher(value);
         while (m.find()) {
@@ -34,7 +36,7 @@ public class PropertyUtils {
         try {
             if (longStr != null)
                 return Long.parseLong(longStr);
-        } catch (NumberFormatException ex) {
+        } catch (NumberFormatException ignore) {
 
         }
         return defaultValue;
@@ -47,7 +49,7 @@ public class PropertyUtils {
     }
 
     public static File getFileSystemProperty(String name, File defaultFile) {
-        String fileStr = System.getProperty(name);
+        String fileStr = replace(System.getProperty(name));
         if (fileStr != null)
             return new File(fileStr);
         else
