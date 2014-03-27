@@ -14,13 +14,17 @@ import org.fressian.FressianWriter;
 import org.fressian.handlers.ILookup;
 import org.fressian.handlers.ReadHandler;
 import org.fressian.handlers.WriteHandler;
+import org.jboss.netty.handler.codec.http.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -32,12 +36,23 @@ public class WebSocketURLConnection extends URLConnection {
     private static Logger logger = LoggerFactory.getLogger(WebSocketURLConnection.class);
     private WebSocket websocket;
     private File cacheDirectory;
-
+    private UUID classLoaderId;
 
     public WebSocketURLConnection(URL url, WebSocket websocket, File cacheDirectory) {
         super(url);
         this.websocket = websocket;
         this.cacheDirectory = cacheDirectory;
+        String query = url.getQuery();
+        if (query != null) {
+            try {
+                QueryStringDecoder decoder = new QueryStringDecoder(url.toURI());
+                List<String> classLoaderIds = decoder.getParameters().get("classLoaderId");
+                if (classLoaderIds != null && !classLoaderIds.isEmpty())
+                    this.classLoaderId = UUID.fromString(classLoaderIds.get(0));
+            } catch (URISyntaxException ignore) {
+                // ignore
+            }
+        }
     }
 
     @Override
@@ -48,11 +63,18 @@ public class WebSocketURLConnection extends URLConnection {
     public ResourceResponse doRequest(ResourceRequest request) throws IOException {
         ResourceReceiveListener listener;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        if (classLoaderId != null) {
+            request.setClassLoaderId(classLoaderId);
+        }
         FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
             @Override
             public Map<String, WriteHandler> valAt(Class key) {
-                return FressianUtils.map(ResourceRequest.class.getName(),
-                        new ResourceRequestWriteHandler());
+                if (key.equals(ResourceRequest.class)) {
+                    return FressianUtils.map(ResourceRequest.class.getName(),
+                            new ResourceRequestWriteHandler());
+                } else {
+                    return null;
+                }
             }
         });
         fw.writeObject(request);
@@ -81,7 +103,7 @@ public class WebSocketURLConnection extends URLConnection {
     }
 
     protected byte[] getResourceDigest() throws IOException {
-        String resourcePath = getURL().getFile();
+        String resourcePath = getURL().getPath();
         ResourceResponse response = doRequest(new ResourceRequest(resourcePath, true));
         return response.getDigest();
     }
@@ -99,7 +121,7 @@ public class WebSocketURLConnection extends URLConnection {
         try {
             ResourceResponse response = doRequest(new ResourceRequest(resourcePath));
             return new ByteArrayInputStream(response.getBytes());
-        } catch(IOException ex) {
+        } catch (IOException ex) {
             logger.debug("Can't retrieve resources.", ex);
             return null;
         }
@@ -114,13 +136,13 @@ public class WebSocketURLConnection extends URLConnection {
         try {
             ResourceResponse response = doRequest(new ResourceRequest(resourcePath));
             return response.getBytes();
-        } catch(IOException ex) {
+        } catch (IOException ex) {
             logger.debug("Can't retrieve resources.", ex);
             return null;
         }
     }
 
-    static class  ResourceReceiveListener implements WebSocketByteListener {
+    static class ResourceReceiveListener implements WebSocketByteListener {
         private BlockingQueue<ResourceResponse> queue;
         private String resourcePath;
 

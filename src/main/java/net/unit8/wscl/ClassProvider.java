@@ -12,6 +12,9 @@ import org.jboss.netty.handler.codec.http.HttpResponseEncoder;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 
 /**
@@ -21,10 +24,11 @@ import java.util.concurrent.Executors;
  */
 public class ClassProvider {
     private ServerBootstrap bootstrap;
+    private final Map<UUID, ClassLoader> classLoaderHolder = new HashMap<UUID, ClassLoader>();
     private FindResourceHandler findResourceHandler;
 
     public ClassProvider() {
-        findResourceHandler = new FindResourceHandler();
+        findResourceHandler = new FindResourceHandler(classLoaderHolder);
     }
     public ServerBootstrap start(int port) {
         ServerBootstrap bootstrap = new ServerBootstrap(
@@ -51,18 +55,13 @@ public class ClassProvider {
         return bootstrap;
     }
 
-    public void setClasspath(URL[] urls) {
-        findResourceHandler.setClassLoader(
+    public UUID registerClasspath(URL[] urls) {
+        UUID classLoaderId = UUID.randomUUID();
+        classLoaderHolder.put(
+                classLoaderId,
                 new URLClassLoader(urls));
-    }
 
-    public URL[] getClasspath() {
-        ClassLoader loader = findResourceHandler.getClassLoader();
-        if (loader instanceof URLClassLoader) {
-            return ((URLClassLoader) loader).getURLs();
-        } else {
-            return new URL[0];
-        }
+        return classLoaderId;
     }
 
     public void stop() {

@@ -27,6 +27,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Map;
+import java.util.UUID;
 
 
 /**
@@ -37,14 +38,19 @@ import java.util.Map;
 public class FindResourceHandler extends SimpleChannelUpstreamHandler {
     private static Logger logger = LoggerFactory.getLogger(FindResourceHandler.class);
     private WebSocketServerHandshaker handshaker;
-    private ClassLoader loader;
+    private final Map<UUID, ClassLoader> classLoaderHolder;
 
-    public ClassLoader getClassLoader() {
+    public FindResourceHandler(Map<UUID, ClassLoader> classLoaderHolder) {
+        this.classLoaderHolder = classLoaderHolder;
+    }
+    public ClassLoader findClassLoader(UUID classLoaderId) {
+        ClassLoader loader = null;
+        if (classLoaderId != null) {
+            loader = classLoaderHolder.get(classLoaderId);
+        }
         return loader != null ? loader : Thread.currentThread().getContextClassLoader();
     }
-    public void setClassLoader(ClassLoader loader) {
-        this.loader = loader;
-    }
+
     @Override
     public void messageReceived(
             ChannelHandlerContext ctx, MessageEvent e) throws Exception {
@@ -88,8 +94,7 @@ public class FindResourceHandler extends SimpleChannelUpstreamHandler {
             ctx.getChannel().disconnect();
             return;
         }
-
-        ClassLoader cl = loader == null ? Thread.currentThread().getContextClassLoader() : loader;
+        ClassLoader cl = findClassLoader(req.getClassLoaderId());
         URL url = cl.getResource(req.getResourceName());
         ResourceResponse res = new ResourceResponse(req.getResourceName());
 
@@ -105,9 +110,13 @@ public class FindResourceHandler extends SimpleChannelUpstreamHandler {
             FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
                 @Override
                 public Map<String, WriteHandler> valAt(Class key) {
-                    return FressianUtils.map(
-                            ResourceResponse.class.getName(),
-                            new ResourceResponseWriteHandler());
+                    if (key.equals(ResourceResponse.class)) {
+                        return FressianUtils.map(
+                                ResourceResponse.class.getName(),
+                                new ResourceResponseWriteHandler());
+                    } else {
+                        return null;
+                    }
                 }
             });
             fw.writeObject(res);
