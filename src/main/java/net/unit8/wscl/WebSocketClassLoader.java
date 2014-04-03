@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
  * @author kawasima
  */
 public class WebSocketClassLoader extends ClassLoader {
+    private AsyncHttpClient client;
     private WebSocket websocket;
     private URL baseUrl;
     private File cacheDirectory;
@@ -44,7 +45,7 @@ public class WebSocketClassLoader extends ClassLoader {
                     "Can't create cache directory: " + cacheDirectory);
         }
 
-        AsyncHttpClient client = new AsyncHttpClient();
+        client = new AsyncHttpClient();
         try {
             websocket = client.prepareGet(url)
                     .execute(new WebSocketUpgradeHandler.Builder().addWebSocketListener(
@@ -135,20 +136,30 @@ public class WebSocketClassLoader extends ClassLoader {
     }
 
 
-    public Class<?> loadClass(String className, boolean resolve)
+    @Override
+    protected Class<?> loadClass(String className, boolean resolve)
             throws ClassNotFoundException {
-        Class<?> clazz = findLoadedClass(className);
-        if (clazz != null) {
-            logger.debug("Load class:" + className);
+        synchronized (getClassLoadingLock(className)) {
+            Class<?> clazz = findLoadedClass(className);
+            if (clazz == null) {
+                try {
+                    clazz = getParent().loadClass(className);
+                } catch (ClassNotFoundException ex) {
+                }
+                if (clazz == null)
+                    clazz = findClass(className);
+            }
+            if (resolve) {
+                resolveClass(clazz);
+            }
             return clazz;
-        }
-        try {
-            return getParent().loadClass(className);
-        } catch (ClassNotFoundException ex) {
-            return defineClass(className, resolve);
         }
     }
 
+    @Override
+    protected Class<?> findClass(String className) throws ClassNotFoundException {
+        return defineClass(className, false);
+    }
     private Class<?> defineClass(String className, boolean resolve)
             throws ClassNotFoundException {
         String path = className.replace('.', '/').concat(".class");
@@ -166,6 +177,22 @@ public class WebSocketClassLoader extends ClassLoader {
             }
         } catch (Exception ex) {
             throw new ClassNotFoundException(className, ex);
+        }
+    }
+
+    @Override
+    public void finalize() {
+        dispose();
+    }
+
+    public void dispose() {
+        if (websocket !=null && websocket.isOpen()) {
+            websocket.close();
+            websocket = null;
+        }
+        if (client != null && !client.isClosed()) {
+            client.close();
+            client = null;
         }
     }
 }

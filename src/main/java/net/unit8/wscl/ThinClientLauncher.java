@@ -18,6 +18,7 @@ public class ThinClientLauncher {
             System.arraycopy(args, 1, remoteArgs, 0, remoteArgs.length);
             Thread.currentThread().setContextClassLoader(cl);
             mainMethod.invoke(null, new Object[] {remoteArgs} );
+            cl.dispose();
         } catch (Exception ex) {
             ex.printStackTrace();
         }
