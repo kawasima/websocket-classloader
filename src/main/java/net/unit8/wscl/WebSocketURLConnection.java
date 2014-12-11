@@ -1,7 +1,7 @@
 package net.unit8.wscl;
 
-import com.ning.http.client.websocket.WebSocket;
-import com.ning.http.client.websocket.WebSocketByteListener;
+import com.ning.http.client.ws.WebSocket;
+import com.ning.http.client.ws.WebSocketByteListener;
 import net.unit8.wscl.dto.ResourceRequest;
 import net.unit8.wscl.dto.ResourceResponse;
 import net.unit8.wscl.handler.ResourceRequestWriteHandler;
@@ -174,10 +174,6 @@ public class WebSocketURLConnection extends URLConnection {
                 logger.warn("interrupt error", ex);
             }
 
-        }
-
-        @Override
-        public void onFragment(byte[] fragment, boolean last) {
         }
 
         @Override

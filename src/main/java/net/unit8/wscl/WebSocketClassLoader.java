@@ -1,9 +1,9 @@
 package net.unit8.wscl;
 
 import com.ning.http.client.AsyncHttpClient;
-import com.ning.http.client.websocket.WebSocket;
-import com.ning.http.client.websocket.WebSocketByteListener;
-import com.ning.http.client.websocket.WebSocketUpgradeHandler;
+import com.ning.http.client.ws.WebSocket;
+import com.ning.http.client.ws.WebSocketByteListener;
+import com.ning.http.client.ws.WebSocketUpgradeHandler;
 import net.unit8.wscl.util.DigestUtils;
 import net.unit8.wscl.util.IOUtils;
 import net.unit8.wscl.util.PropertyUtils;
@@ -52,11 +52,6 @@ public class WebSocketClassLoader extends ClassLoader {
                             new WebSocketByteListener() {
                                 @Override
                                 public void onMessage(byte[] bytes) {
-                                }
-
-                                @Override
-                                public void onFragment(byte[] bytes, boolean b) {
-
                                 }
 
                                 @Override

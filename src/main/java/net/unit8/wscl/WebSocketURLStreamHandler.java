@@ -1,6 +1,6 @@
 package net.unit8.wscl;
 
-import com.ning.http.client.websocket.WebSocket;
+import com.ning.http.client.ws.WebSocket;
 
 import java.io.File;
 import java.io.IOException;
