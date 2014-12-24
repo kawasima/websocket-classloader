@@ -1,13 +1,15 @@
 package net.unit8.wscl;
 
-import org.jboss.netty.bootstrap.ServerBootstrap;
-import org.jboss.netty.channel.ChannelPipeline;
-import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
-import org.jboss.netty.handler.codec.http.HttpChunkAggregator;
-import org.jboss.netty.handler.codec.http.HttpRequestDecoder;
-import org.jboss.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.ssl.SslContext;
 
 import java.net.InetSocketAddress;
 import java.net.URL;
@@ -15,7 +17,6 @@ import java.net.URLClassLoader;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Executors;
 
 /**
  * Provide classes via WebSocket.
@@ -23,7 +24,9 @@ import java.util.concurrent.Executors;
  * @author kawasima
  */
 public class ClassProvider {
-    private ServerBootstrap bootstrap;
+    private EventLoopGroup bossGroup;
+    private EventLoopGroup workerGroup;
+
     private final Map<UUID, ClassLoader> classLoaderHolder = new HashMap<UUID, ClassLoader>();
     private FindResourceHandler findResourceHandler;
 
@@ -31,27 +34,29 @@ public class ClassProvider {
         findResourceHandler = new FindResourceHandler(classLoaderHolder);
     }
     public ServerBootstrap start(int port) {
-        ServerBootstrap bootstrap = new ServerBootstrap(
-                new NioServerSocketChannelFactory(
-                        Executors.newCachedThreadPool(),
-                        Executors.newCachedThreadPool()
-                )
-        );
-        bootstrap.setPipelineFactory(
-                new ChannelPipelineFactory() {
+        // TODO ssl support
+        final SslContext sslCtx = null;
+
+        bossGroup = new NioEventLoopGroup(1);
+        workerGroup = new NioEventLoopGroup();
+
+        ServerBootstrap bootstrap = new ServerBootstrap();
+        bootstrap.group(bossGroup, workerGroup)
+                .channel(NioServerSocketChannel.class)
+                .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
-                    public ChannelPipeline getPipeline() throws Exception {
-                        ChannelPipeline pipeline =  Channels.pipeline();
-                        pipeline.addLast("decoder", new HttpRequestDecoder());
-                        pipeline.addLast("aggregator", new HttpChunkAggregator(65536));
-                        pipeline.addLast("encoder", new HttpResponseEncoder());
-                        pipeline.addLast("handler", findResourceHandler);
-                        return pipeline;
+                    protected void initChannel(SocketChannel ch) throws Exception {
+                        ChannelPipeline pipeline = ch.pipeline();
+                        if (sslCtx != null) {
+                            pipeline.addLast(sslCtx.newHandler(ch.alloc()));
+                        }
+                        pipeline.addLast(new HttpServerCodec());
+                        pipeline.addLast(new HttpObjectAggregator(65536));
+                        pipeline.addLast(findResourceHandler);
                     }
-                }
-        );
+                });
+
         bootstrap.bind(new InetSocketAddress(port));
-        this.bootstrap = bootstrap;
         return bootstrap;
     }
 
@@ -65,8 +70,10 @@ public class ClassProvider {
     }
 
     public void stop() {
-        if (bootstrap != null)
-            bootstrap.shutdown();
+        if (bossGroup != null)
+            bossGroup.shutdownGracefully();
+        if (workerGroup != null)
+            workerGroup.shutdownGracefully();
     }
 
 }
