@@ -26,13 +26,11 @@ import java.util.UUID;
 public class ClassProvider {
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
-
-    private final Map<UUID, ClassLoader> classLoaderHolder = new HashMap<UUID, ClassLoader>();
-    private FindResourceHandler findResourceHandler;
+    final Map<UUID, ClassLoader> classLoaderHolder = new HashMap<UUID, ClassLoader>();
 
     public ClassProvider() {
-        findResourceHandler = new FindResourceHandler(classLoaderHolder);
     }
+
     public ServerBootstrap start(int port) {
         // TODO ssl support
         final SslContext sslCtx = null;
@@ -46,6 +44,8 @@ public class ClassProvider {
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     protected void initChannel(SocketChannel ch) throws Exception {
+                        FindResourceHandler findResourceHandler  = new FindResourceHandler(classLoaderHolder);
+
                         ChannelPipeline pipeline = ch.pipeline();
                         if (sslCtx != null) {
                             pipeline.addLast(sslCtx.newHandler(ch.alloc()));

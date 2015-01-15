@@ -2,7 +2,6 @@ package net.unit8.wscl;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -26,6 +25,7 @@ import org.fressian.handlers.WriteHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.util.Map;
@@ -126,6 +126,7 @@ public class FindResourceHandler extends SimpleChannelInboundHandler<Object> {
 
 
     private void onBinaryWebSocketFrame(ChannelHandlerContext ctx, BinaryWebSocketFrame frame) {
+        logger.debug("onBinaryWebSocketFrame: " + frame);
         ResourceRequest req = null;
         try {
             ByteBufInputStream bbis = new ByteBufInputStream(frame.content().retain());
@@ -146,12 +147,13 @@ public class FindResourceHandler extends SimpleChannelInboundHandler<Object> {
             ctx.disconnect();
             return;
         }
+        logger.debug("classLoaderId=" + req.getClassLoaderId() +
+                ", resourceName=" + req.getResourceName());
         ClassLoader cl = findClassLoader(req.getClassLoaderId());
         URL url = cl.getResource(req.getResourceName());
         ResourceResponse res = new ResourceResponse(req.getResourceName());
 
-        ByteBuf outBuf = Unpooled.buffer(65536);
-        ByteBufOutputStream bbos = new ByteBufOutputStream(outBuf);
+        ByteArrayOutputStream baos = new ByteArrayOutputStream(65535);
         try {
             if (url != null) {
                 byte[] classBytes = IOUtils.slurp(url);
@@ -160,7 +162,7 @@ public class FindResourceHandler extends SimpleChannelInboundHandler<Object> {
                     res.setBytes(classBytes);
                 }
             }
-            FressianWriter fw = new FressianWriter(bbos, new ILookup<Class, Map<String, WriteHandler>>() {
+            FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
                 @Override
                 public Map<String, WriteHandler> valAt(Class key) {
                     if (key.equals(ResourceResponse.class)) {
@@ -173,14 +175,17 @@ public class FindResourceHandler extends SimpleChannelInboundHandler<Object> {
                 }
             });
             fw.writeObject(res);
+            fw.close();
         } catch (IOException ex) {
             logger.warn("Client connection is invalid. disconnect " + ctx, ex);
         } finally {
-            IOUtils.closeQuietly(bbos);
+            IOUtils.closeQuietly(baos);
         }
 
-        WebSocketFrame outFrame = new BinaryWebSocketFrame(outBuf);
-        ctx.write(outFrame);
+        WebSocketFrame outFrame = new BinaryWebSocketFrame(Unpooled.copiedBuffer(baos.toByteArray()));
+
+        logger.debug("write frame for " + res.getResourceName() + ": "+ outFrame);
+        ctx.writeAndFlush(outFrame);
     }
 
     private static String getWebSocketLocation(HttpRequest req) {

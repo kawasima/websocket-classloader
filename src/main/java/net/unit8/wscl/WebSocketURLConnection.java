@@ -1,7 +1,8 @@
 package net.unit8.wscl;
 
-import com.ning.http.client.ws.WebSocket;
-import com.ning.http.client.ws.WebSocketByteListener;
+import io.netty.handler.codec.http.QueryStringDecoder;
+import net.unit8.wscl.client.WebSocketByteListener;
+import net.unit8.wscl.client.WebSocketClient;
 import net.unit8.wscl.dto.ResourceRequest;
 import net.unit8.wscl.dto.ResourceResponse;
 import net.unit8.wscl.handler.ResourceRequestWriteHandler;
@@ -14,7 +15,6 @@ import org.fressian.FressianWriter;
 import org.fressian.handlers.ILookup;
 import org.fressian.handlers.ReadHandler;
 import org.fressian.handlers.WriteHandler;
-import org.jboss.netty.handler.codec.http.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,19 +34,19 @@ import java.util.concurrent.TimeUnit;
  */
 public class WebSocketURLConnection extends URLConnection {
     private static Logger logger = LoggerFactory.getLogger(WebSocketURLConnection.class);
-    private WebSocket websocket;
+    private WebSocketClient client;
     private File cacheDirectory;
     private UUID classLoaderId;
 
-    public WebSocketURLConnection(URL url, WebSocket websocket, File cacheDirectory) {
+    public WebSocketURLConnection(URL url, WebSocketClient client, File cacheDirectory) {
         super(url);
-        this.websocket = websocket;
+        this.client = client;
         this.cacheDirectory = cacheDirectory;
         String query = url.getQuery();
         if (query != null) {
             try {
                 QueryStringDecoder decoder = new QueryStringDecoder(url.toURI());
-                List<String> classLoaderIds = decoder.getParameters().get("classLoaderId");
+                List<String> classLoaderIds = decoder.parameters().get("classLoaderId");
                 if (classLoaderIds != null && !classLoaderIds.isEmpty())
                     this.classLoaderId = UUID.fromString(classLoaderIds.get(0));
             } catch (URISyntaxException ignore) {
@@ -79,16 +79,16 @@ public class WebSocketURLConnection extends URLConnection {
         });
         fw.writeObject(request);
         listener = new ResourceReceiveListener(request.getResourceName());
-        websocket.addWebSocketListener(listener);
+        client.addListener(listener);
 
         try {
             logger.debug("fetch class:" + request.getResourceName());
-            websocket.sendMessage(baos.toByteArray());
+            client.sendMessage(baos.toByteArray());
             ResourceResponse response = listener.queue.poll(
                     PropertyUtils.getLongSystemProperty("wscl.timeout", 5000),
                     TimeUnit.MILLISECONDS);
             if (response == null)
-                throw new IOException("Websocket request error.");
+                throw new IOException("Websocket request error." + request.getResourceName());
             if (cacheDirectory != null && !request.isCheckOnly()) {
                 IOUtils.spitQuietly(
                         new File(cacheDirectory, url.getPath()),
@@ -98,7 +98,7 @@ public class WebSocketURLConnection extends URLConnection {
         } catch (InterruptedException ex) {
             throw new IOException(ex);
         } finally {
-            websocket.removeWebSocketListener(listener);
+            client.removeListener(listener);
         }
     }
 
@@ -142,7 +142,7 @@ public class WebSocketURLConnection extends URLConnection {
         }
     }
 
-    static class ResourceReceiveListener implements WebSocketByteListener {
+    static class ResourceReceiveListener extends WebSocketByteListener {
         private BlockingQueue<ResourceResponse> queue;
         private String resourcePath;
 
@@ -153,10 +153,9 @@ public class WebSocketURLConnection extends URLConnection {
 
         @Override
         public void onMessage(byte[] bytes) {
-            ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
             try {
-                logger.debug("fetched class:" + resourcePath);
-                ResourceResponse response = (ResourceResponse) new FressianReader(bais, new ILookup<Object, ReadHandler>() {
+                logger.debug("onMessage: fetched class:" + resourcePath);
+                FressianReader reader = new FressianReader(new ByteArrayInputStream(bytes), new ILookup<Object, ReadHandler>() {
                     @Override
                     public ReadHandler valAt(Object key) {
                         if (key.equals(ResourceResponse.class.getName()))
@@ -164,31 +163,29 @@ public class WebSocketURLConnection extends URLConnection {
                         else
                             return null;
                     }
-                }).readObject();
-                if (response.getResourceName().equals(resourcePath)) {
-                    queue.put(response);
+                });
+
+                Object obj = reader.readObject();
+                if (obj instanceof ResourceResponse) {
+                    ResourceResponse response = (ResourceResponse) obj;
+                    logger.debug("onMessage: " + response.getResourceName() + ":" + resourcePath);
+                    if (response.getResourceName().equals(resourcePath)) {
+                        queue.put(response);
+                    }
+                } else {
+                    logger.debug("Fressian read response: " + obj + "(" + obj.getClass() +")");
                 }
             } catch (IOException ex) {
                 logger.warn("read response error", ex);
             } catch (InterruptedException ex) {
                 logger.warn("interrupt error", ex);
             }
-
         }
 
-        @Override
-        public void onOpen(WebSocket websocket) {
-
-        }
 
         @Override
-        public void onClose(WebSocket websocket) {
-
-        }
-
-        @Override
-        public void onError(Throwable t) {
-
+        public String toString() {
+            return "ResourceReceiveListener(" + resourcePath + ")";
         }
     }
 }

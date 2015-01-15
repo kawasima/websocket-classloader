@@ -1,13 +1,11 @@
 package net.unit8.wscl;
 
-import com.ning.http.client.AsyncHttpClient;
-import com.ning.http.client.ws.WebSocket;
-import com.ning.http.client.ws.WebSocketByteListener;
-import com.ning.http.client.ws.WebSocketUpgradeHandler;
+import io.netty.handler.codec.http.QueryStringDecoder;
+import net.unit8.wscl.client.WebSocketClient;
+import net.unit8.wscl.client.WebSocketListener;
 import net.unit8.wscl.util.DigestUtils;
 import net.unit8.wscl.util.IOUtils;
 import net.unit8.wscl.util.PropertyUtils;
-import org.jboss.netty.handler.codec.http.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,7 +16,6 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 /**
  * ClassLoader fetching classes via WebSocket.
@@ -26,8 +23,7 @@ import java.util.concurrent.TimeUnit;
  * @author kawasima
  */
 public class WebSocketClassLoader extends ClassLoader {
-    private AsyncHttpClient client;
-    private WebSocket websocket;
+    private WebSocketClient client;
     private URL baseUrl;
     private File cacheDirectory;
 
@@ -45,31 +41,17 @@ public class WebSocketClassLoader extends ClassLoader {
                     "Can't create cache directory: " + cacheDirectory);
         }
 
-        client = new AsyncHttpClient();
+        client = new WebSocketClient(url);
         try {
-            websocket = client.prepareGet(url)
-                    .execute(new WebSocketUpgradeHandler.Builder().addWebSocketListener(
-                            new WebSocketByteListener() {
-                                @Override
-                                public void onMessage(byte[] bytes) {
-                                }
+            client.addListener(
+                    new WebSocketListener() {
+                        @Override
+                        public void onOpen(WebSocketClient c) {
+                            logger.debug("Connected! to class provider.");
+                        }
+                    });
+            client.connect(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000));
 
-                                @Override
-                                public void onOpen(WebSocket webSocket) {
-                                    logger.debug("Connected! to class provider.");
-                                }
-
-                                @Override
-                                public void onClose(WebSocket webSocket) {
-
-                                }
-
-                                @Override
-                                public void onError(Throwable throwable) {
-                                }
-                            }
-                    ).build())
-                    .get(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000), TimeUnit.MILLISECONDS);
             logger.debug("new websocket classloader");
         } catch (Exception ex) {
             throw new RuntimeException(ex);
@@ -78,7 +60,7 @@ public class WebSocketClassLoader extends ClassLoader {
             URL httpUrl = new URL(url.replaceFirst("ws://", "http://"));
             baseUrl = new URL("ws", httpUrl.getHost(), httpUrl.getPort(),
                     httpUrl.getFile(),
-                    new WebSocketURLStreamHandler(websocket, cacheDirectory));
+                    new WebSocketURLStreamHandler(client, cacheDirectory));
         } catch (Exception e) {
             throw new RuntimeException("ClassProvider URL is invalid.", e);
         }
@@ -101,7 +83,7 @@ public class WebSocketClassLoader extends ClassLoader {
         URL url;
         try {
             QueryStringDecoder decoder = new QueryStringDecoder(baseUrl.toURI());
-            List<String> classLoaderIds = decoder.getParameters().get("classLoaderId");
+            List<String> classLoaderIds = decoder.parameters().get("classLoaderId");
 
             StringBuilder file = new StringBuilder(256);
             file.append(name);
@@ -111,7 +93,7 @@ public class WebSocketClassLoader extends ClassLoader {
 
             url = new URL(baseUrl.getProtocol(), baseUrl.getHost(), baseUrl.getPort(),
                     file.toString(),
-                    new WebSocketURLStreamHandler(websocket, cacheDirectory));
+                    new WebSocketURLStreamHandler(client, cacheDirectory));
         } catch (URISyntaxException ex) {
             throw new IllegalArgumentException("name");
         } catch (MalformedURLException ex) {
@@ -134,6 +116,7 @@ public class WebSocketClassLoader extends ClassLoader {
     @Override
     protected Class<?> loadClass(String className, boolean resolve)
             throws ClassNotFoundException {
+        logger.debug("obtain lock:" + className);
         synchronized (getClassLoadingLock(className)) {
             Class<?> clazz = findLoadedClass(className);
             if (clazz == null) {
@@ -147,6 +130,7 @@ public class WebSocketClassLoader extends ClassLoader {
             if (resolve) {
                 resolveClass(clazz);
             }
+            logger.debug("release lock:" + className);
             return clazz;
         }
     }
@@ -166,6 +150,14 @@ public class WebSocketClassLoader extends ClassLoader {
             URLConnection connection = url.openConnection();
             byte[] bytes = IOUtils.slurp(connection.getContent());
             if (bytes != null) {
+                int idx = className.lastIndexOf(".");
+                if (idx > 0) {
+                    String packageName = className.substring(0, idx);
+                    Package pkg = getPackage(packageName);
+                    if (pkg == null) {
+                        definePackage(packageName, null, null, null, null, null, null, null);
+                    }
+                }
                 return defineClass(className, bytes, 0, bytes.length);
             } else {
                 throw new ClassNotFoundException(className);
@@ -181,11 +173,7 @@ public class WebSocketClassLoader extends ClassLoader {
     }
 
     public void dispose() {
-        if (websocket !=null && websocket.isOpen()) {
-            websocket.close();
-            websocket = null;
-        }
-        if (client != null && !client.isClosed()) {
+        if (client !=null && client.isOpen()) {
             client.close();
             client = null;
         }
