@@ -1,20 +1,27 @@
 package net.unit8.wscl;
 
-import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.HttpObjectAggregator;
-import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.ssl.SslContext;
+import net.unit8.wscl.dto.ResourceRequest;
+import net.unit8.wscl.dto.ResourceResponse;
+import net.unit8.wscl.handler.ResourceRequestReadHandler;
+import net.unit8.wscl.handler.ResourceResponseWriteHandler;
+import net.unit8.wscl.util.DigestUtils;
+import net.unit8.wscl.util.FressianUtils;
+import net.unit8.wscl.util.IOUtils;
+import org.fressian.FressianReader;
+import org.fressian.FressianWriter;
+import org.fressian.handlers.ILookup;
+import org.fressian.handlers.ReadHandler;
+import org.fressian.handlers.WriteHandler;
+import org.fressian.impl.ByteBufferInputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.net.InetSocketAddress;
+import javax.websocket.*;
+import javax.websocket.server.ServerEndpoint;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.HashMap;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,57 +30,87 @@ import java.util.UUID;
  *
  * @author kawasima
  */
+@ServerEndpoint("/")
 public class ClassProvider {
-    private EventLoopGroup bossGroup;
-    private EventLoopGroup workerGroup;
-    final Map<UUID, ClassLoader> classLoaderHolder = new HashMap<UUID, ClassLoader>();
+    private static final Logger logger = LoggerFactory.getLogger(ClassProvider.class);
 
-    public ClassProvider() {
+    @OnOpen
+    public void onOpen(Session session, EndpointConfig endpointConfig) {
+        logger.debug("client " + session + " connected");
     }
 
-    public ServerBootstrap start(int port) {
-        // TODO ssl support
-        final SslContext sslCtx = null;
+    private ClassLoader findClassLoader(UUID classLoaderId) {
+        ClassLoader loader = null;
+        if (classLoaderId != null) {
+            loader = ClassLoaderHolder.getInstance().get(classLoaderId);
+        }
+        return loader != null ? loader : Thread.currentThread().getContextClassLoader();
+    }
 
-        bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup();
+    @OnMessage
+    public void findResource(ByteBuffer msg, Session session) {
+        ResourceRequest req = null;
+        try (InputStream is = new ByteBufferInputStream(msg)) {
+            FressianReader fr = new FressianReader(is, new ILookup<Object, ReadHandler>() {
+                @Override
+                public ReadHandler valAt(Object key) {
+                    if (key.equals(ResourceRequest.class.getName()))
+                        return new ResourceRequestReadHandler();
+                    else
+                        return null;
+                }
+            });
+            req = (ResourceRequest) fr.readObject();
+        } catch (IOException ignored) {
 
-        ServerBootstrap bootstrap = new ServerBootstrap();
-        bootstrap.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
-                .childHandler(new ChannelInitializer<SocketChannel>() {
-                    @Override
-                    protected void initChannel(SocketChannel ch) throws Exception {
-                        FindResourceHandler findResourceHandler  = new FindResourceHandler(classLoaderHolder);
+        }
 
-                        ChannelPipeline pipeline = ch.pipeline();
-                        if (sslCtx != null) {
-                            pipeline.addLast(sslCtx.newHandler(ch.alloc()));
-                        }
-                        pipeline.addLast(new HttpServerCodec());
-                        pipeline.addLast(new HttpObjectAggregator(65536));
-                        pipeline.addLast(findResourceHandler);
+        if (req == null) {
+            try {
+                session.close(new CloseReason(CloseReason.CloseCodes.CLOSED_ABNORMALLY, ""));
+            } catch(IOException ignore) {
+            }
+            return;
+        }
+
+        ClassLoader cl = findClassLoader(req.getClassLoaderId());
+        URL url = cl.getResource(req.getResourceName());
+        ResourceResponse res = new ResourceResponse(req.getResourceName());
+
+        BinaryFrameOutputStream bfos = null;
+        try {
+            if (url != null) {
+                byte[] classBytes = IOUtils.slurp(url);
+                res.setDigest(DigestUtils.md5hash(classBytes));
+                if (!req.isCheckOnly()) {
+                    res.setBytes(classBytes);
+                }
+            }
+            bfos = new BinaryFrameOutputStream(session.getAsyncRemote());
+            FressianWriter fw = new FressianWriter(bfos, new ILookup<Class, Map<String, WriteHandler>>() {
+                @Override
+                public Map<String, WriteHandler> valAt(Class key) {
+                    if (key.equals(ResourceResponse.class)) {
+                        return FressianUtils.map(
+                                ResourceResponse.class.getName(),
+                                new ResourceResponseWriteHandler());
+                    } else {
+                        return null;
                     }
-                });
-
-        bootstrap.bind(new InetSocketAddress(port));
-        return bootstrap;
+                }
+            });
+            fw.writeObject(res);
+            fw.close();
+        } catch (IOException ex) {
+            logger.warn("Client connection is invalid. disconnect " + session, ex);
+        } finally {
+            IOUtils.closeQuietly(bfos);
+        }
     }
 
-    public UUID registerClasspath(URL[] urls) {
-        UUID classLoaderId = UUID.randomUUID();
-        classLoaderHolder.put(
-                classLoaderId,
-                new URLClassLoader(urls));
-
-        return classLoaderId;
-    }
-
-    public void stop() {
-        if (bossGroup != null)
-            bossGroup.shutdownGracefully();
-        if (workerGroup != null)
-            workerGroup.shutdownGracefully();
+    @OnClose
+    public void onClose(Session session, CloseReason closeReason) {
+        logger.debug("Client " + session + " closed for" + closeReason);
     }
 
 }

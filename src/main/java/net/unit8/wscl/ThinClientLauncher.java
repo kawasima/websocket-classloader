@@ -1,17 +1,24 @@
 package net.unit8.wscl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 import java.lang.reflect.Method;
 
 /**
  * @author kawasima
  */
 public class ThinClientLauncher {
-    public static void main(String[] args) {
+    private static final Logger logger = LoggerFactory.getLogger(ThinClientLauncher.class);
+
+    public static void main(String[] args) throws IOException {
         String loaderAddress = System.getProperty("wscl.loader");
         if (loaderAddress == null)
-            loaderAddress = "ws://localhost:8080";
-        WebSocketClassLoader cl = new WebSocketClassLoader(loaderAddress);
+            loaderAddress = "ws://localhost:5000";
+        WebSocketClassLoader cl = null;
         try {
+            cl = new WebSocketClassLoader(loaderAddress);
             Class<?> mainClass = cl.loadClass(args[0], true);
             Method mainMethod = mainClass.getMethod("main", String[].class);
             String[] remoteArgs = new String[args.length - 1];
@@ -20,7 +27,10 @@ public class ThinClientLauncher {
             mainMethod.invoke(null, new Object[] {remoteArgs} );
             cl.dispose();
         } catch (Exception ex) {
-            ex.printStackTrace();
+            logger.error("Error in executing " + args[0], ex);
+        } finally {
+            if (cl != null)
+                cl.dispose();
         }
     }
 }

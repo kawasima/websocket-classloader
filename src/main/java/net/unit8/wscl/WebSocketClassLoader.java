@@ -1,17 +1,20 @@
 package net.unit8.wscl;
 
-import io.netty.handler.codec.http.QueryStringDecoder;
-import net.unit8.wscl.client.WebSocketClient;
-import net.unit8.wscl.client.WebSocketListener;
 import net.unit8.wscl.util.DigestUtils;
 import net.unit8.wscl.util.IOUtils;
 import net.unit8.wscl.util.PropertyUtils;
+import net.unit8.wscl.util.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.websocket.ContainerProvider;
+import javax.websocket.DeploymentException;
+import javax.websocket.Session;
+import javax.websocket.WebSocketContainer;
 import java.io.File;
+import java.io.IOException;
 import java.net.MalformedURLException;
-import java.net.URISyntaxException;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
@@ -23,16 +26,17 @@ import java.util.List;
  * @author kawasima
  */
 public class WebSocketClassLoader extends ClassLoader {
-    private WebSocketClient client;
+    private Session session;
     private URL baseUrl;
     private File cacheDirectory;
 
-    private static Logger logger = LoggerFactory.getLogger(WebSocketClassLoader.class);
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketClassLoader.class);
 
-    public WebSocketClassLoader(String url) {
+    public WebSocketClassLoader(String url) throws IOException, DeploymentException {
         this(url, Thread.currentThread().getContextClassLoader());
     }
-    public WebSocketClassLoader(String url, ClassLoader parent) {
+    public WebSocketClassLoader(String url, ClassLoader parent)
+            throws DeploymentException, IOException {
         super(parent);
         cacheDirectory = PropertyUtils.getFileSystemProperty("wscl.cache.directory");
 
@@ -40,27 +44,13 @@ public class WebSocketClassLoader extends ClassLoader {
             throw new IllegalArgumentException(
                     "Can't create cache directory: " + cacheDirectory);
         }
-
-        client = new WebSocketClient(url);
-        try {
-            client.addListener(
-                    new WebSocketListener() {
-                        @Override
-                        public void onOpen(WebSocketClient c) {
-                            logger.debug("Connected! to class provider.");
-                        }
-                    });
-            client.connect(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000));
-
-            logger.debug("new websocket classloader");
-        } catch (Exception ex) {
-            throw new RuntimeException(ex);
-        }
+        WebSocketContainer container = ContainerProvider.getWebSocketContainer();
+        session = container.connectToServer(ClassLoaderEndpoint.class, URI.create(url));
         try {
             URL httpUrl = new URL(url.replaceFirst("ws://", "http://"));
             baseUrl = new URL("ws", httpUrl.getHost(), httpUrl.getPort(),
                     httpUrl.getFile(),
-                    new WebSocketURLStreamHandler(client, cacheDirectory));
+                    new WebSocketURLStreamHandler(session, cacheDirectory));
         } catch (Exception e) {
             throw new RuntimeException("ClassProvider URL is invalid.", e);
         }
@@ -82,7 +72,7 @@ public class WebSocketClassLoader extends ClassLoader {
     protected URL findResource(String name) {
         URL url;
         try {
-            QueryStringDecoder decoder = new QueryStringDecoder(baseUrl.toURI());
+            QueryStringDecoder decoder = new QueryStringDecoder(baseUrl.getQuery());
             List<String> classLoaderIds = decoder.parameters().get("classLoaderId");
 
             StringBuilder file = new StringBuilder(256);
@@ -93,9 +83,7 @@ public class WebSocketClassLoader extends ClassLoader {
 
             url = new URL(baseUrl.getProtocol(), baseUrl.getHost(), baseUrl.getPort(),
                     file.toString(),
-                    new WebSocketURLStreamHandler(client, cacheDirectory));
-        } catch (URISyntaxException ex) {
-            throw new IllegalArgumentException("name");
+                    new WebSocketURLStreamHandler(session, cacheDirectory));
         } catch (MalformedURLException ex) {
             throw new IllegalArgumentException("name");
         }
@@ -116,13 +104,12 @@ public class WebSocketClassLoader extends ClassLoader {
     @Override
     protected Class<?> loadClass(String className, boolean resolve)
             throws ClassNotFoundException {
-        logger.debug("obtain lock:" + className);
         synchronized (getClassLoadingLock(className)) {
             Class<?> clazz = findLoadedClass(className);
             if (clazz == null) {
                 try {
                     clazz = getParent().loadClass(className);
-                } catch (ClassNotFoundException ex) {
+                } catch (ClassNotFoundException ignored) {
                 }
                 if (clazz == null)
                     clazz = findClass(className);
@@ -130,7 +117,6 @@ public class WebSocketClassLoader extends ClassLoader {
             if (resolve) {
                 resolveClass(clazz);
             }
-            logger.debug("release lock:" + className);
             return clazz;
         }
     }
@@ -168,14 +154,18 @@ public class WebSocketClassLoader extends ClassLoader {
     }
 
     @Override
-    public void finalize() {
-        dispose();
+    public void finalize() throws Throwable{
+        try {
+            dispose();
+        } finally {
+            super.finalize();
+        }
     }
 
-    public void dispose() {
-        if (client !=null && client.isOpen()) {
-            client.close();
-            client = null;
+    public void dispose() throws IOException {
+        if (session != null && session.isOpen()) {
+            session.close();
+            session = null;
         }
     }
 }
