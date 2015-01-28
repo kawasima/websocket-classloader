@@ -7,10 +7,7 @@ import net.unit8.wscl.util.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.ContainerProvider;
-import javax.websocket.DeploymentException;
-import javax.websocket.Session;
-import javax.websocket.WebSocketContainer;
+import javax.websocket.*;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -26,7 +23,7 @@ import java.util.List;
  * @author kawasima
  */
 public class WebSocketClassLoader extends ClassLoader {
-    private Session session;
+    private ClassLoaderEndpoint endpoint;
     private URL baseUrl;
     private File cacheDirectory;
 
@@ -45,12 +42,14 @@ public class WebSocketClassLoader extends ClassLoader {
                     "Can't create cache directory: " + cacheDirectory);
         }
         WebSocketContainer container = ContainerProvider.getWebSocketContainer();
-        session = container.connectToServer(ClassLoaderEndpoint.class, URI.create(url));
+        endpoint = new ClassLoaderEndpoint();
+        container.connectToServer(endpoint,
+                ClientEndpointConfig.Builder.create().build(), URI.create(url));
         try {
             URL httpUrl = new URL(url.replaceFirst("ws://", "http://"));
             baseUrl = new URL("ws", httpUrl.getHost(), httpUrl.getPort(),
                     httpUrl.getFile(),
-                    new WebSocketURLStreamHandler(session, cacheDirectory));
+                    new WebSocketURLStreamHandler(endpoint, cacheDirectory));
         } catch (Exception e) {
             throw new RuntimeException("ClassProvider URL is invalid.", e);
         }
@@ -83,7 +82,7 @@ public class WebSocketClassLoader extends ClassLoader {
 
             url = new URL(baseUrl.getProtocol(), baseUrl.getHost(), baseUrl.getPort(),
                     file.toString(),
-                    new WebSocketURLStreamHandler(session, cacheDirectory));
+                    new WebSocketURLStreamHandler(endpoint, cacheDirectory));
         } catch (MalformedURLException ex) {
             throw new IllegalArgumentException("name");
         }
@@ -123,9 +122,9 @@ public class WebSocketClassLoader extends ClassLoader {
 
     @Override
     protected Class<?> findClass(String className) throws ClassNotFoundException {
-        return defineClass(className, false);
+        return defineClass(className);
     }
-    private Class<?> defineClass(String className, boolean resolve)
+    private Class<?> defineClass(String className)
             throws ClassNotFoundException {
         String path = className.replace('.', '/').concat(".class");
         URL url = findResource(path);
@@ -163,9 +162,6 @@ public class WebSocketClassLoader extends ClassLoader {
     }
 
     public void dispose() throws IOException {
-        if (session != null && session.isOpen()) {
-            session.close();
-            session = null;
-        }
+        endpoint.close();
     }
 }

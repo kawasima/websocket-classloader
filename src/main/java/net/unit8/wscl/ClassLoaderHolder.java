@@ -19,7 +19,7 @@ public class ClassLoaderHolder {
         return INSTANCE;
     }
 
-    public UUID registerclasspath(URL[] urls, ClassLoader parent) {
+    public UUID registerClasspath(URL[] urls, ClassLoader parent) {
         UUID classLoaderId = UUID.randomUUID();
         synchronized (clMap) {
             clMap.put(classLoaderId, new URLClassLoader(urls, parent));

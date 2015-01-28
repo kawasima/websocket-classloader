@@ -15,7 +15,7 @@ websocket-classloaderは、そんな分散マシン向けのクラスローダ�
 
 ## Usage
 
-ClassProviderを起動します。
+ClassProviderをJSR―356のコンテナ(undertow, tomcatなど)にデプロイします。
 
 ```java
 new ClassProvider().start(port);

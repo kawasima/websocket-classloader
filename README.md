@@ -6,11 +6,7 @@ A ClassLoader loading remote java class via WebSocket.
 
 ## Usage
 
-Start ClassProvider.
-
-```java
-new ClassProvider().start(port);
-```
+Deploy ClassProvider to JSR-356 container, e.g. undertow, tomcat.
 
 Use class loader as following:
 

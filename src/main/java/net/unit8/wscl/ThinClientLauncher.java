@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 
 /**
+ * The launcher for a thin client.
+ *
  * @author kawasima
  */
 public class ThinClientLauncher {

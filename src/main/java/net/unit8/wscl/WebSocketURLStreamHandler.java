@@ -1,6 +1,5 @@
 package net.unit8.wscl;
 
-import javax.websocket.Session;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
@@ -11,16 +10,16 @@ import java.net.URLStreamHandler;
  * @author kawasima
  */
 public class WebSocketURLStreamHandler extends URLStreamHandler{
-    private final Session session;
+    private final ClassLoaderEndpoint endpoint;
     private final File cacheDirectory;
 
-    public WebSocketURLStreamHandler(Session session, File cacheDirectory) {
-        this.session = session;
+    public WebSocketURLStreamHandler(ClassLoaderEndpoint endpoint, File cacheDirectory) {
+        this.endpoint = endpoint;
         this.cacheDirectory = cacheDirectory;
     }
 
     @Override
     protected URLConnection openConnection(URL url) throws IOException {
-        return new WebSocketURLConnection(url, session, cacheDirectory);
+        return new WebSocketURLConnection(url, endpoint, cacheDirectory);
     }
 }
