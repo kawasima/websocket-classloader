@@ -55,4 +55,9 @@ public class PropertyUtils {
         else
             return defaultFile;
     }
+    
+    private PropertyUtils()   //class PropertyUtils cannot be instantiated.
+    {
+    	
+    }
 }

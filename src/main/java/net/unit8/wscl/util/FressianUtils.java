@@ -24,4 +24,9 @@ public class FressianUtils {
             return Collections.unmodifiableMap(m);
         }
     }
+    
+    private FressianUtils()    //class FressianUtils cannot be instantiated.
+    {
+    	
+    }
 }

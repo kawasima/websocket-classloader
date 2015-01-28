@@ -42,5 +42,10 @@ public class DigestUtils {
             }
         }
     }
+    
+    private DigestUtils()     //class DigestUtils cannot be instantiated.
+    {
+    	
+    }
 
 }
