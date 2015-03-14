@@ -3,7 +3,6 @@ package net.unit8.wscl;
 import net.unit8.wscl.dto.ResourceRequest;
 import net.unit8.wscl.dto.ResourceResponse;
 import net.unit8.wscl.util.IOUtils;
-import net.unit8.wscl.util.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,7 +12,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.net.URLConnection;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -25,17 +23,11 @@ public class WebSocketURLConnection extends URLConnection {
     private final File cacheDirectory;
     private UUID classLoaderId;
 
-    public WebSocketURLConnection(URL url, ClassLoaderEndpoint endpoint, File cacheDirectory) {
+    public WebSocketURLConnection(URL url, ClassLoaderEndpoint endpoint, File cacheDirectory, UUID classLoaderId) {
         super(url);
         this.endpoint = endpoint;
         this.cacheDirectory = cacheDirectory;
-        String query = url.getQuery();
-        if (query != null) {
-            List<String> classLoaderIds = new QueryStringDecoder(query).parameters().get("classLoaderId");
-            if (!classLoaderIds.isEmpty()) {
-                this.classLoaderId = UUID.fromString(classLoaderIds.get(0));
-            }
-        }
+        this.classLoaderId = classLoaderId;
     }
 
     @Override
@@ -43,6 +35,14 @@ public class WebSocketURLConnection extends URLConnection {
         // Do nothing.
     }
 
+    private String getResourcePath() {
+        String path = getURL().getPath();
+        if (path.startsWith("/")) {
+            return path.substring(1);
+        } else {
+            return path;
+        }
+    }
 
     private ResourceResponse doRequest(ResourceRequest request) throws IOException {
         if (classLoaderId != null) {
@@ -58,7 +58,7 @@ public class WebSocketURLConnection extends URLConnection {
     }
 
     protected byte[] getResourceDigest() throws IOException {
-        String resourcePath = getURL().getPath();
+        String resourcePath = getResourcePath();
         ResourceResponse response = doRequest(new ResourceRequest(resourcePath, true));
         return response.getDigest();
     }
@@ -72,10 +72,14 @@ public class WebSocketURLConnection extends URLConnection {
                 return null;
             }
         }
-        String resourcePath = getURL().getPath();
+        String resourcePath = getResourcePath();
         try {
             ResourceResponse response = doRequest(new ResourceRequest(resourcePath));
-            return new ByteArrayInputStream(response.getBytes());
+            if (response.getBytes() != null) {
+                return new ByteArrayInputStream(response.getBytes());
+            } else {
+                return null;
+            }
         } catch (IOException ex) {
             logger.debug("Can't retrieve resources.", ex);
             return null;
@@ -87,7 +91,7 @@ public class WebSocketURLConnection extends URLConnection {
         if (!"ws".equalsIgnoreCase(getURL().getProtocol())) {
             return IOUtils.slurpQuietly(getURL());
         }
-        String resourcePath = getURL().getPath();
+        String resourcePath = getResourcePath();
         try {
             ResourceResponse response = doRequest(new ResourceRequest(resourcePath));
             return response.getBytes();

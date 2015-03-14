@@ -20,10 +20,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * @author kawasima
@@ -31,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 @ClientEndpoint
 public class ClassLoaderEndpoint extends Endpoint {
     private static final Logger logger = LoggerFactory.getLogger(ClassLoaderEndpoint.class);
+
     private Session session;
     private Map<String, BlockingQueue<ResourceResponse>> waitingResponses = new ConcurrentHashMap<>();
 
@@ -60,6 +58,7 @@ public class ClassLoaderEndpoint extends Endpoint {
                         BlockingQueue<ResourceResponse> queue = waitingResponses.get(response.getResourceName());
                         if (queue != null) {
                             queue.offer(response);
+                        } else {
                         }
                     } else {
                         logger.warn("Fressian read response: " + obj + "(" + obj.getClass() + ")");
@@ -86,14 +85,14 @@ public class ClassLoaderEndpoint extends Endpoint {
         });
         fw.writeObject(request);
 
-        logger.debug("fetch class:" + request.getResourceName());
+        logger.debug("fetch class:" + request.getResourceName() + ":" + request.getClassLoaderId());
 
-        BlockingQueue<ResourceResponse> queue = new SynchronousQueue<>();
+        final BlockingQueue<ResourceResponse> queue = new ArrayBlockingQueue<>(1);
         waitingResponses.put(request.getResourceName(), queue);
-        ResourceResponse response;
         try {
             session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()));
-            response = queue.poll(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000), TimeUnit.MILLISECONDS);
+            ResourceResponse response = queue.poll(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000), TimeUnit.MILLISECONDS);
+
             if (response == null)
                 throw new IOException("WebSocket request error." + request.getResourceName());
             return response;

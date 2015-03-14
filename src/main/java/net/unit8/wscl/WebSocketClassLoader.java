@@ -7,7 +7,10 @@ import net.unit8.wscl.util.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.*;
+import javax.websocket.ClientEndpointConfig;
+import javax.websocket.ContainerProvider;
+import javax.websocket.DeploymentException;
+import javax.websocket.WebSocketContainer;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -15,7 +18,9 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.Vector;
 
 /**
  * ClassLoader fetching classes via WebSocket.
@@ -24,6 +29,7 @@ import java.util.List;
  */
 public class WebSocketClassLoader extends ClassLoader {
     private ClassLoaderEndpoint endpoint;
+    private WebSocketURLStreamHandler urlStreamHandler;
     private URL baseUrl;
     private File cacheDirectory;
 
@@ -35,6 +41,8 @@ public class WebSocketClassLoader extends ClassLoader {
     public WebSocketClassLoader(String url, ClassLoader parent)
             throws DeploymentException, IOException {
         super(parent);
+
+        logger.debug("Parent classloader=" + parent);
         cacheDirectory = PropertyUtils.getFileSystemProperty("wscl.cache.directory");
 
         if (cacheDirectory != null && !cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
@@ -47,9 +55,14 @@ public class WebSocketClassLoader extends ClassLoader {
                 ClientEndpointConfig.Builder.create().build(), URI.create(url));
         try {
             URL httpUrl = new URL(url.replaceFirst("ws://", "http://"));
+            QueryStringDecoder decoder = new QueryStringDecoder(httpUrl.getQuery());
+            List<String> classLoaderIds = decoder.parameters().get("classLoaderId");
+            this.urlStreamHandler = new WebSocketURLStreamHandler(endpoint, cacheDirectory);
+            if (classLoaderIds !=  null && !classLoaderIds.isEmpty())
+                urlStreamHandler.setClassLoaderId(classLoaderIds.get(0));
+
             baseUrl = new URL("ws", httpUrl.getHost(), httpUrl.getPort(),
-                    httpUrl.getFile(),
-                    new WebSocketURLStreamHandler(endpoint, cacheDirectory));
+                    httpUrl.getFile(), urlStreamHandler);
         } catch (Exception e) {
             throw new RuntimeException("ClassProvider URL is invalid.", e);
         }
@@ -60,7 +73,7 @@ public class WebSocketClassLoader extends ClassLoader {
         if (cacheFile.exists() && Arrays.equals(digest, DigestUtils.md5hash(cacheFile))) {
             try {
                 return cacheFile.toURI().toURL();
-            } catch (MalformedURLException e) {
+            } catch (MalformedURLException ppppe) {
                 return url;
             }
         } else {
@@ -68,21 +81,25 @@ public class WebSocketClassLoader extends ClassLoader {
         }
     }
 
+    @Override
+    public Enumeration<URL> getResources(String name) throws IOException {
+        logger.debug("getResources:" + name);
+        Enumeration<URL> resources = super.getResources(name);
+        return resources;
+    }
+
+    @Override
     protected URL findResource(String name) {
         URL url;
         try {
-            QueryStringDecoder decoder = new QueryStringDecoder(baseUrl.getQuery());
-            List<String> classLoaderIds = decoder.parameters().get("classLoaderId");
-
-            StringBuilder file = new StringBuilder(256);
+           StringBuilder file = new StringBuilder(256);
+            if (!name.startsWith("/")) {
+                file.append("/");
+            }
             file.append(name);
 
-            if (classLoaderIds !=  null && !classLoaderIds.isEmpty())
-                file.append("?classLoaderId=").append(classLoaderIds.get(0));
+            url = new URL(baseUrl, file.toString());
 
-            url = new URL(baseUrl.getProtocol(), baseUrl.getHost(), baseUrl.getPort(),
-                    file.toString(),
-                    new WebSocketURLStreamHandler(endpoint, cacheDirectory));
         } catch (MalformedURLException ex) {
             throw new IllegalArgumentException("name");
         }
@@ -90,6 +107,7 @@ public class WebSocketClassLoader extends ClassLoader {
         try {
             WebSocketURLConnection connection = (WebSocketURLConnection)url.openConnection();
             byte[] digest = connection.getResourceDigest();
+            logger.debug("findResource:" + name + ":" + url.toString() + ":" + digest);
             if (digest == null)
                 return null;
             return cacheDirectory != null ? findCache(url, digest) : url;
@@ -97,6 +115,24 @@ public class WebSocketClassLoader extends ClassLoader {
             logger.warn("Exception at fetching.", e);
             return null;
         }
+    }
+
+    /**
+     * Returns an enumeration of URL objects representing all the resources with th given name.
+     *
+     * Currently, WebSocketClassLoader returns only the first element.
+     *
+     * @param name
+     * @return
+     */
+    @Override
+    protected Enumeration<URL> findResources(String name) {
+        URL url = findResource(name);
+        Vector<URL> urls = new Vector<>();
+        if (url != null) {
+            urls.add(url);
+        }
+        return urls.elements();
     }
 
 

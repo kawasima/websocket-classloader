@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.websocket.*;
 import javax.websocket.server.ServerEndpoint;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -77,8 +78,7 @@ public class ClassProvider {
         URL url = cl.getResource(req.getResourceName());
         ResourceResponse res = new ResourceResponse(req.getResourceName());
 
-        BinaryFrameOutputStream bfos = null;
-        try {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             if (url != null) {
                 byte[] classBytes = IOUtils.slurp(url);
                 res.setDigest(DigestUtils.md5hash(classBytes));
@@ -86,8 +86,9 @@ public class ClassProvider {
                     res.setBytes(classBytes);
                 }
             }
-            bfos = new BinaryFrameOutputStream(session.getAsyncRemote());
-            FressianWriter fw = new FressianWriter(bfos, new ILookup<Class, Map<String, WriteHandler>>() {
+            logger.debug("findResource:" + req.getResourceName() + "(" + req.getClassLoaderId() + "):resourceUrl=" + url + ":" + res.getDigest());
+
+            FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
                 @Override
                 public Map<String, WriteHandler> valAt(Class key) {
                     if (key.equals(ResourceResponse.class)) {
@@ -101,10 +102,19 @@ public class ClassProvider {
             });
             fw.writeObject(res);
             fw.close();
+
+            logger.debug("findResource:sendBinary=" + baos.toByteArray().length);
+            session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()),
+                    new SendHandler() {
+                        @Override
+                        public void onResult(SendResult result) {
+                            if (!result.isOK()) {
+                                logger.warn(result.getException().toString());
+                            }
+                        }
+                    });
         } catch (IOException ex) {
             logger.warn("Client connection is invalid. disconnect " + session, ex);
-        } finally {
-            IOUtils.closeQuietly(bfos);
         }
     }
 
