@@ -29,7 +29,6 @@ import java.util.Vector;
  */
 public class WebSocketClassLoader extends ClassLoader {
     private ClassLoaderEndpoint endpoint;
-    private WebSocketURLStreamHandler urlStreamHandler;
     private URL baseUrl;
     private File cacheDirectory;
 
@@ -57,7 +56,7 @@ public class WebSocketClassLoader extends ClassLoader {
             URL httpUrl = new URL(url.replaceFirst("ws://", "http://"));
             QueryStringDecoder decoder = new QueryStringDecoder(httpUrl.getQuery());
             List<String> classLoaderIds = decoder.parameters().get("classLoaderId");
-            this.urlStreamHandler = new WebSocketURLStreamHandler(endpoint, cacheDirectory);
+            WebSocketURLStreamHandler urlStreamHandler = new WebSocketURLStreamHandler(endpoint, cacheDirectory);
             if (classLoaderIds !=  null && !classLoaderIds.isEmpty())
                 urlStreamHandler.setClassLoaderId(classLoaderIds.get(0));
 
@@ -82,13 +81,6 @@ public class WebSocketClassLoader extends ClassLoader {
     }
 
     @Override
-    public Enumeration<URL> getResources(String name) throws IOException {
-        logger.debug("getResources:" + name);
-        Enumeration<URL> resources = super.getResources(name);
-        return resources;
-    }
-
-    @Override
     protected URL findResource(String name) {
         URL url;
         try {
@@ -107,7 +99,7 @@ public class WebSocketClassLoader extends ClassLoader {
         try {
             WebSocketURLConnection connection = (WebSocketURLConnection)url.openConnection();
             byte[] digest = connection.getResourceDigest();
-            logger.debug("findResource:" + name + ":" + url.toString() + ":" + digest);
+            logger.debug("findResource:" + name + ":" + url.toString());
             if (digest == null)
                 return null;
             return cacheDirectory != null ? findCache(url, digest) : url;
@@ -122,8 +114,8 @@ public class WebSocketClassLoader extends ClassLoader {
      *
      * Currently, WebSocketClassLoader returns only the first element.
      *
-     * @param name
-     * @return
+     * @param name The name of a resource.
+     * @return All founded resources.
      */
     @Override
     protected Enumeration<URL> findResources(String name) {

@@ -58,7 +58,6 @@ public class ClassLoaderEndpoint extends Endpoint {
                         BlockingQueue<ResourceResponse> queue = waitingResponses.get(response.getResourceName());
                         if (queue != null) {
                             queue.offer(response);
-                        } else {
                         }
                     } else {
                         logger.warn("Fressian read response: " + obj + "(" + obj.getClass() + ")");

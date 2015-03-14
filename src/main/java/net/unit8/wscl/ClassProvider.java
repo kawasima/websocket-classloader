@@ -86,7 +86,7 @@ public class ClassProvider {
                     res.setBytes(classBytes);
                 }
             }
-            logger.debug("findResource:" + req.getResourceName() + "(" + req.getClassLoaderId() + "):resourceUrl=" + url + ":" + res.getDigest());
+            logger.debug("findResource:" + req.getResourceName() + "(" + req.getClassLoaderId() + "):resourceUrl=" + url);
 
             FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
                 @Override
@@ -109,7 +109,7 @@ public class ClassProvider {
                         @Override
                         public void onResult(SendResult result) {
                             if (!result.isOK()) {
-                                logger.warn(result.getException().toString());
+                                logger.warn("fail to sendBinary.", result.getException());
                             }
                         }
                     });
