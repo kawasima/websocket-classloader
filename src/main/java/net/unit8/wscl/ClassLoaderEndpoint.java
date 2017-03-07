@@ -1,11 +1,21 @@
 package net.unit8.wscl;
 
-import net.unit8.wscl.dto.ResourceRequest;
-import net.unit8.wscl.dto.ResourceResponse;
-import net.unit8.wscl.handler.ResourceRequestWriteHandler;
-import net.unit8.wscl.handler.ResourceResponseReadHandler;
-import net.unit8.wscl.util.FressianUtils;
-import net.unit8.wscl.util.PropertyUtils;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+
+import javax.websocket.ClientEndpoint;
+import javax.websocket.Endpoint;
+import javax.websocket.EndpointConfig;
+import javax.websocket.MessageHandler;
+import javax.websocket.OnOpen;
+import javax.websocket.Session;
+
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
 import org.fressian.handlers.ILookup;
@@ -15,12 +25,12 @@ import org.fressian.impl.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.*;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.Map;
-import java.util.concurrent.*;
+import net.unit8.wscl.dto.ResourceRequest;
+import net.unit8.wscl.dto.ResourceResponse;
+import net.unit8.wscl.handler.ResourceRequestWriteHandler;
+import net.unit8.wscl.handler.ResourceResponseReadHandler;
+import net.unit8.wscl.util.FressianUtils;
+import net.unit8.wscl.util.PropertyUtils;
 
 /**
  * @author kawasima
@@ -99,6 +109,7 @@ public class ClassLoaderEndpoint extends Endpoint {
             throw new IOException("Interrupted in waiting for request." + request.getResourceName(), ex);
         } finally {
             waitingResponses.remove(request.getResourceName());
+            fw.close();
         }
     }
 
