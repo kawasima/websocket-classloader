@@ -64,7 +64,7 @@ public class ClassLoaderEndpointTest {
     public void oneRequest() throws Exception {
         cle.onOpen(session, null);
         ExecutorService service = Executors.newCachedThreadPool();
-        CompletableFuture<String> asyncResponse =CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
+        CompletableFuture<String> asyncResponse = CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
         Field f = cle.getClass().getDeclaredField("waitingResponses");
         f.setAccessible(true);
         ConcurrentHashMap waitingResponse = (ConcurrentHashMap) f.get(cle);
@@ -78,16 +78,38 @@ public class ClassLoaderEndpointTest {
     public void twoRequestAtTheSameTime() throws Exception {
         cle.onOpen(session, null);
         ExecutorService service = Executors.newCachedThreadPool();
-        CompletableFuture<String> asyncResponse1 =CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
-        CompletableFuture<String> asyncResponse2 =CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
+        CompletableFuture<String> asyncResponse1 = CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
+        CompletableFuture<String> asyncResponse2 = CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
         Field f = cle.getClass().getDeclaredField("waitingResponses");
         f.setAccessible(true);
         ConcurrentHashMap waitingResponse = (ConcurrentHashMap) f.get(cle);
         Thread.sleep(1000);
         BlockingQueue<ResourceResponse> queue = (BlockingQueue<ResourceResponse>) waitingResponse.get("resouce1");
         queue.offer(new ResourceResponse("resoucename1"));
+        queue.offer(new ResourceResponse("resoucename1"));
         assertThat(asyncResponse1.get(),is("resoucename1"));
         assertThat(asyncResponse2.get(),is("resoucename1"));
+    }
+
+    @Test
+    public void manyRequestAtTheSameTime() throws Exception {
+        cle.onOpen(session, null);
+        ExecutorService service = Executors.newCachedThreadPool();
+        CompletableFuture<String> asyncResponse1 = CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
+        CompletableFuture<String> asyncResponse2 = CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
+        CompletableFuture<String> asyncResponse3 = CompletableFuture.supplyAsync(() -> request(cle,resourceRequest), service);
+        Field f = cle.getClass().getDeclaredField("waitingResponses");
+        f.setAccessible(true);
+        ConcurrentHashMap waitingResponse = (ConcurrentHashMap) f.get(cle);
+        Thread.sleep(1000);
+        BlockingQueue<ResourceResponse> queue = (BlockingQueue<ResourceResponse>) waitingResponse.get("resouce1");
+        queue.offer(new ResourceResponse("resoucename1"));
+        queue.offer(new ResourceResponse("resoucename1"));
+        queue.offer(new ResourceResponse("resoucename1"));
+
+        assertThat(asyncResponse1.get(),is("resoucename1"));
+        assertThat(asyncResponse2.get(),is("resoucename1"));
+        assertThat(asyncResponse3.get(),is("resoucename1"));
     }
     
     

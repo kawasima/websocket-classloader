@@ -96,8 +96,8 @@ public class ClassLoaderEndpoint extends Endpoint {
 
         logger.debug("fetch class:" + request.getResourceName() + ":" + request.getClassLoaderId());
 
-        final BlockingQueue<ResourceResponse> queue = new ArrayBlockingQueue<>(1);
-        waitingResponses.put(request.getResourceName(), queue);
+        waitingResponses.putIfAbsent(request.getResourceName(), new ArrayBlockingQueue<>(5));
+        final BlockingQueue<ResourceResponse> queue = waitingResponses.get(request.getResourceName());
         try {
             session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()));
             ResourceResponse response = queue.poll(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000), TimeUnit.MILLISECONDS);
@@ -108,7 +108,9 @@ public class ClassLoaderEndpoint extends Endpoint {
         } catch(InterruptedException ex) {
             throw new IOException("Interrupted in waiting for request." + request.getResourceName(), ex);
         } finally {
-            waitingResponses.remove(request.getResourceName());
+            if (queue.isEmpty()) {
+                waitingResponses.remove(request.getResourceName());
+            }
             fw.close();
         }
     }
