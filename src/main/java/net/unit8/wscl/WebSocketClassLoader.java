@@ -72,7 +72,7 @@ public class WebSocketClassLoader extends ClassLoader {
         if (cacheFile.exists() && Arrays.equals(digest, DigestUtils.md5hash(cacheFile))) {
             try {
                 return cacheFile.toURI().toURL();
-            } catch (MalformedURLException ppppe) {
+            } catch (MalformedURLException e) {
                 return url;
             }
         } else {

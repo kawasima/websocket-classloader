@@ -30,5 +30,5 @@ Class<?> hogeClass = cl.loadClass("org.example.HogeHoge", true);
 ## License
 
 Apache License 2.0
-(c) 2014 Yoshitaka Kawashima
+(c) 2014-2017 Yoshitaka Kawashima
 

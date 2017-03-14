@@ -46,5 +46,5 @@ WebSocketClassLoaderを使う側のアプリケーション(クライアント�
 ## License
 
 Apache License 2.0
-(c) 2014 Yoshitaka Kawashima
+(c) 2014-2017 Yoshitaka Kawashima
 
