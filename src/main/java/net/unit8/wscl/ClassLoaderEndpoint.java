@@ -75,6 +75,7 @@ public class ClassLoaderEndpoint extends Endpoint {
         });
     }
 
+    @SuppressWarnings("resource")
     public ResourceResponse request(ResourceRequest request) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
