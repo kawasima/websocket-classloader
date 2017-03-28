@@ -4,7 +4,7 @@
 
     <groupId>net.unit8.wscl</groupId>
     <artifactId>websocket-classloader</artifactId>
-    <version>0.3.0-sp1</version>
+    <version>0.3.1-SNAPSHOT1</version>
 
     <packaging>jar</packaging>
     <name>websocket-classloader</name>
