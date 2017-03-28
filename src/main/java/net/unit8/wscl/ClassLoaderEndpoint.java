@@ -32,7 +32,7 @@ public class ClassLoaderEndpoint extends Endpoint {
     private Session session;
     private final ConcurrentMap<String, BlockingQueue<ResourceResponse>> waitingResponses = new ConcurrentHashMap<>();
 
-    public ClassLoaderEndpoint () {
+    public ClassLoaderEndpoint() {
     }
 
     @OnOpen
@@ -42,15 +42,16 @@ public class ClassLoaderEndpoint extends Endpoint {
             @Override
             public void onMessage(ByteBuffer buf) {
                 try {
-                    FressianReader reader = new FressianReader(new ByteBufferInputStream(buf), new ILookup<Object, ReadHandler>() {
-                        @Override
-                        public ReadHandler valAt(Object key) {
-                            if (key.equals(ResourceResponse.class.getName()))
-                                return new ResourceResponseReadHandler();
-                            else
-                                return null;
-                        }
-                    });
+                    FressianReader reader = new FressianReader(new ByteBufferInputStream(buf),
+                            new ILookup<Object, ReadHandler>() {
+                                @Override
+                                public ReadHandler valAt(Object key) {
+                                    if (key.equals(ResourceResponse.class.getName()))
+                                        return new ResourceResponseReadHandler();
+                                    else
+                                        return null;
+                                }
+                            });
 
                     Object obj = reader.readObject();
                     if (obj instanceof ResourceResponse) {
@@ -58,6 +59,11 @@ public class ClassLoaderEndpoint extends Endpoint {
                         BlockingQueue<ResourceResponse> queue = waitingResponses.get(response.getResourceName());
                         if (queue != null) {
                             queue.offer(response);
+                        } else {
+                            ArrayBlockingQueue<ResourceResponse> tempCreateQueue = new ArrayBlockingQueue<ResourceResponse>(
+                                    10);
+                            waitingResponses.putIfAbsent(response.getResourceName(), tempCreateQueue);
+                            tempCreateQueue.offer(response);
                         }
                     } else {
                         logger.warn("Fressian read response: " + obj + "(" + obj.getClass() + ")");
@@ -69,14 +75,14 @@ public class ClassLoaderEndpoint extends Endpoint {
         });
     }
 
+    @SuppressWarnings("resource")
     public ResourceResponse request(ResourceRequest request) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
             @Override
             public Map<String, WriteHandler> valAt(Class key) {
                 if (key.equals(ResourceRequest.class)) {
-                    return FressianUtils.map(ResourceRequest.class.getName(),
-                            new ResourceRequestWriteHandler());
+                    return FressianUtils.map(ResourceRequest.class.getName(), new ResourceRequestWriteHandler());
                 } else {
                     return null;
                 }
@@ -86,16 +92,21 @@ public class ClassLoaderEndpoint extends Endpoint {
 
         logger.debug("fetch class:" + request.getResourceName() + ":" + request.getClassLoaderId());
 
-        waitingResponses.putIfAbsent(request.getResourceName(), new ArrayBlockingQueue<ResourceResponse>(10));
-        BlockingQueue<ResourceResponse> queue = waitingResponses.get(request.getResourceName());
+        BlockingQueue<ResourceResponse> queue = null;
         try {
-            session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()));
-            ResourceResponse response = queue.poll(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000), TimeUnit.MILLISECONDS);
+            synchronized (waitingResponses) {
+                waitingResponses.putIfAbsent(request.getResourceName(), new ArrayBlockingQueue<ResourceResponse>(
+                        PropertyUtils.getLongSystemProperty("wscl.queue.size", 10).intValue()));
+                queue = waitingResponses.get(request.getResourceName());
+                session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()));
+                ResourceResponse response = queue.poll(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000),
+                        TimeUnit.MILLISECONDS);
 
-            if (response == null)
-                throw new IOException("WebSocket request error." + request.getResourceName());
-            return response;
-        } catch(InterruptedException ex) {
+                if (response == null)
+                    throw new IOException("WebSocket request error." + request.getResourceName());
+                return response;
+            }
+        } catch (InterruptedException ex) {
             throw new IOException("Interrupted in waiting for request." + request.getResourceName(), ex);
         } finally {
             synchronized (waitingResponses) {
