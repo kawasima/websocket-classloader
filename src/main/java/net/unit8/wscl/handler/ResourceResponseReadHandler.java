@@ -14,7 +14,9 @@ import java.io.IOException;
 public class ResourceResponseReadHandler implements ReadHandler {
     @Override
     public Object read(Reader r, Object tag, int componentCount) throws IOException {
-        assert(componentCount == 3);
+        if (componentCount != 3) {
+            throw new IOException("Expected 3 components for ResourceResponse, got " + componentCount);
+        }
         return new ResourceResponse(
                 (String)r.readObject(),
                 (byte[])r.readObject(),

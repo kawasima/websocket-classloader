@@ -19,7 +19,7 @@ public class PropertyUtils {
     private static String replace(String value) {
         if (value == null)
             return null;
-        StringBuffer sb = new StringBuffer(256);
+        StringBuilder sb = new StringBuilder(256);
         Matcher m = VAR_PTN.matcher(value);
         while (m.find()) {
             String propValue = System.getProperty(m.group(1));

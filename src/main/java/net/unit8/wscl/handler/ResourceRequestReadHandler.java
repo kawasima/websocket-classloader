@@ -15,11 +15,13 @@ import java.util.UUID;
 public class ResourceRequestReadHandler implements ReadHandler {
     @Override
     public Object read(Reader r, Object tag, int componentCount) throws IOException {
-        assert(componentCount == 3);
-        ResourceRequest req =  new ResourceRequest((String)r.readObject(), r.readBoolean());
+        if (componentCount != 3) {
+            throw new IOException("Expected 3 components for ResourceRequest, got " + componentCount);
+        }
+        ResourceRequest req = new ResourceRequest((String) r.readObject(), r.readBoolean());
         Object uuid = r.readObject();
-        if (uuid != null && uuid instanceof UUID) {
-            req.setClassLoaderId((UUID) uuid);
+        if (uuid instanceof UUID id) {
+            req.setClassLoaderId(id);
         }
         return req;
     }

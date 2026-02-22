@@ -21,12 +21,8 @@ public class IOUtils {
     }
 
     public static byte[] slurp(URL url) throws IOException {
-        InputStream in = null;
-        try {
-            in = url.openStream();
+        try (InputStream in = url.openStream()) {
             return slurp(in);
-        } finally {
-            closeQuietly(in);
         }
     }
 
@@ -48,19 +44,16 @@ public class IOUtils {
         }
     }
 
-    public static void spit(File file, byte[] content) throws IOException{
-        if(file == null)
+    public static void spit(File file, byte[] content) throws IOException {
+        if (file == null)
             throw new FileNotFoundException("null");
 
         if (!file.getParentFile().exists() && !file.getParentFile().mkdirs()) {
             throw new IOException("Can't create directory" + file.getParent());
         }
 
-        FileOutputStream out = new FileOutputStream(file);
-        try {
+        try (FileOutputStream out = new FileOutputStream(file)) {
             out.write(content);
-        } finally {
-            IOUtils.closeQuietly(out);
         }
     }
 

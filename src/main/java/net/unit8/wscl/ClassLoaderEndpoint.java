@@ -8,18 +8,14 @@ import net.unit8.wscl.util.FressianUtils;
 import net.unit8.wscl.util.PropertyUtils;
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
-import org.fressian.handlers.ILookup;
-import org.fressian.handlers.ReadHandler;
-import org.fressian.handlers.WriteHandler;
 import org.fressian.impl.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.*;
+import jakarta.websocket.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.concurrent.*;
 
 /**
@@ -29,7 +25,7 @@ import java.util.concurrent.*;
 public class ClassLoaderEndpoint extends Endpoint {
     private static final Logger logger = LoggerFactory.getLogger(ClassLoaderEndpoint.class);
 
-    private Session session;
+    private volatile Session session;
     private final ConcurrentMap<String, BlockingQueue<ResourceResponse>> waitingResponses = new ConcurrentHashMap<>();
 
     public ClassLoaderEndpoint() {
@@ -43,28 +39,13 @@ public class ClassLoaderEndpoint extends Endpoint {
             public void onMessage(ByteBuffer buf) {
                 try {
                     FressianReader reader = new FressianReader(new ByteBufferInputStream(buf),
-                            new ILookup<Object, ReadHandler>() {
-                                @Override
-                                public ReadHandler valAt(Object key) {
-                                    if (key.equals(ResourceResponse.class.getName()))
-                                        return new ResourceResponseReadHandler();
-                                    else
-                                        return null;
-                                }
-                            });
+                            key -> key.equals(ResourceResponse.class.getName()) ? new ResourceResponseReadHandler() : null);
 
                     Object obj = reader.readObject();
-                    if (obj instanceof ResourceResponse) {
-                        ResourceResponse response = (ResourceResponse) obj;
-                        BlockingQueue<ResourceResponse> queue = waitingResponses.get(response.getResourceName());
-                        if (queue != null) {
-                            queue.offer(response);
-                        } else {
-                            ArrayBlockingQueue<ResourceResponse> tempCreateQueue = new ArrayBlockingQueue<ResourceResponse>(
-                                    10);
-                            waitingResponses.putIfAbsent(response.getResourceName(), tempCreateQueue);
-                            tempCreateQueue.offer(response);
-                        }
+                    if (obj instanceof ResourceResponse response) {
+                        BlockingQueue<ResourceResponse> queue = waitingResponses.computeIfAbsent(
+                                response.getResourceName(), k -> new ArrayBlockingQueue<>(10));
+                        queue.offer(response);
                     } else {
                         logger.warn("Fressian read response: " + obj + "(" + obj.getClass() + ")");
                     }
@@ -78,49 +59,45 @@ public class ClassLoaderEndpoint extends Endpoint {
     @SuppressWarnings("resource")
     public ResourceResponse request(ResourceRequest request) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
-            @Override
-            public Map<String, WriteHandler> valAt(Class key) {
-                if (key.equals(ResourceRequest.class)) {
-                    return FressianUtils.map(ResourceRequest.class.getName(), new ResourceRequestWriteHandler());
-                } else {
-                    return null;
-                }
-            }
-        });
+        FressianWriter fw = new FressianWriter(baos,
+                key -> key.equals(ResourceRequest.class)
+                        ? FressianUtils.map(ResourceRequest.class.getName(), new ResourceRequestWriteHandler())
+                        : null);
         fw.writeObject(request);
 
         logger.debug("fetch class:" + request.getResourceName() + ":" + request.getClassLoaderId());
 
-        BlockingQueue<ResourceResponse> queue = null;
-        try {
-            synchronized (waitingResponses) {
-                waitingResponses.putIfAbsent(request.getResourceName(), new ArrayBlockingQueue<ResourceResponse>(
+        BlockingQueue<ResourceResponse> queue = waitingResponses.computeIfAbsent(
+                request.getResourceName(),
+                k -> new ArrayBlockingQueue<>(
                         PropertyUtils.getLongSystemProperty("wscl.queue.size", 10).intValue()));
-                queue = waitingResponses.get(request.getResourceName());
-                session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()));
-                ResourceResponse response = queue.poll(PropertyUtils.getLongSystemProperty("wscl.timeout", 5000),
-                        TimeUnit.MILLISECONDS);
 
-                if (response == null)
-                    throw new IOException("WebSocket request error." + request.getResourceName());
-                return response;
-            }
+        try {
+            session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()));
+            ResourceResponse response = queue.poll(
+                    PropertyUtils.getLongSystemProperty("wscl.timeout", 5000),
+                    TimeUnit.MILLISECONDS);
+
+            if (response == null)
+                throw new IOException("WebSocket request error." + request.getResourceName());
+            return response;
         } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
             throw new IOException("Interrupted in waiting for request." + request.getResourceName(), ex);
         } finally {
-            synchronized (waitingResponses) {
-                if (queue.isEmpty()) {
-                    waitingResponses.remove(request.getResourceName());
-                }
+            if (queue.isEmpty()) {
+                waitingResponses.remove(request.getResourceName(), queue);
             }
         }
     }
 
     public void close() throws IOException {
-        if (session != null && session.isOpen()) {
-            session.close();
+        Session s = session;
+        if (s != null) {
             session = null;
+            if (s.isOpen()) {
+                s.close();
+            }
         }
     }
 }

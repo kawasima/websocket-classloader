@@ -9,21 +9,17 @@ import net.unit8.wscl.util.FressianUtils;
 import net.unit8.wscl.util.IOUtils;
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
-import org.fressian.handlers.ILookup;
-import org.fressian.handlers.ReadHandler;
-import org.fressian.handlers.WriteHandler;
 import org.fressian.impl.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.*;
-import javax.websocket.server.ServerEndpoint;
+import jakarta.websocket.*;
+import jakarta.websocket.server.ServerEndpoint;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.nio.ByteBuffer;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -52,15 +48,8 @@ public class ClassProvider {
     public void findResource(ByteBuffer msg, Session session) {
         ResourceRequest req = null;
         try (InputStream is = new ByteBufferInputStream(msg)) {
-            FressianReader fr = new FressianReader(is, new ILookup<Object, ReadHandler>() {
-                @Override
-                public ReadHandler valAt(Object key) {
-                    if (key.equals(ResourceRequest.class.getName()))
-                        return new ResourceRequestReadHandler();
-                    else
-                        return null;
-                }
-            });
+            FressianReader fr = new FressianReader(is,
+                    key -> key.equals(ResourceRequest.class.getName()) ? new ResourceRequestReadHandler() : null);
             req = (ResourceRequest) fr.readObject();
         } catch (IOException ignored) {
 
@@ -88,31 +77,19 @@ public class ClassProvider {
             }
             logger.debug("findResource:" + req.getResourceName() + "(" + req.getClassLoaderId() + "):resourceUrl=" + url);
 
-            FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
-                @Override
-                public Map<String, WriteHandler> valAt(Class key) {
-                    if (key.equals(ResourceResponse.class)) {
-                        return FressianUtils.map(
-                                ResourceResponse.class.getName(),
-                                new ResourceResponseWriteHandler());
-                    } else {
-                        return null;
-                    }
-                }
-            });
+            FressianWriter fw = new FressianWriter(baos,
+                    key -> key.equals(ResourceResponse.class)
+                            ? FressianUtils.map(ResourceResponse.class.getName(), new ResourceResponseWriteHandler())
+                            : null);
             fw.writeObject(res);
             fw.close();
 
             logger.debug("findResource:sendBinary=" + baos.toByteArray().length);
-            session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()),
-                    new SendHandler() {
-                        @Override
-                        public void onResult(SendResult result) {
-                            if (!result.isOK()) {
-                                logger.warn("fail to sendBinary.", result.getException());
-                            }
-                        }
-                    });
+            session.getAsyncRemote().sendBinary(ByteBuffer.wrap(baos.toByteArray()), result -> {
+                if (!result.isOK()) {
+                    logger.warn("fail to sendBinary.", result.getException());
+                }
+            });
         } catch (IOException ex) {
             logger.warn("Client connection is invalid. disconnect " + session, ex);
         }

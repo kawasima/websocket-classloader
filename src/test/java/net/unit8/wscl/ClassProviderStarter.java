@@ -8,7 +8,7 @@ import org.xnio.OptionMap;
 import org.xnio.Xnio;
 import org.xnio.XnioWorker;
 
-import javax.servlet.ServletException;
+import jakarta.servlet.ServletException;
 import java.io.IOException;
 
 /**
@@ -31,9 +31,8 @@ public class ClassProviderStarter {
                         .addServletContextAttribute(WebSocketDeploymentInfo.ATTRIBUTE_NAME, webSockets));
 
         deploymentManager.deploy();
-        //noinspection deprecation
         Undertow.builder()
-                .addListener(5000, "localhost")
+                .addHttpListener(5000, "localhost")
                 .setHandler(deploymentManager.start())
                 .build()
                 .start();

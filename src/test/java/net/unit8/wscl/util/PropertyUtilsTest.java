@@ -1,11 +1,12 @@
 package net.unit8.wscl.util;
 
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests for PropertyUtils
@@ -13,21 +14,21 @@ import java.io.File;
  * @author kawasima
  */
 public class PropertyUtilsTest {
-    @Before
+    @BeforeEach
     public void setUp() {
         System.setProperty("wscl.home", "/hoge/fuga");
         System.setProperty("wscl.home2", "${wscl.home}/piyo");
     }
+
     @Test
     public void test() {
-        Assert.assertEquals(new File("/hoge/fuga/piyo"),
+        assertEquals(new File("/hoge/fuga/piyo"),
                 PropertyUtils.getFileSystemProperty("wscl.home2"));
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         System.clearProperty("wscl.home");
         System.clearProperty("wscl.home2");
     }
-
 }

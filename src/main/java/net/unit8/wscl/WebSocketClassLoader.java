@@ -7,10 +7,10 @@ import net.unit8.wscl.util.QueryStringDecoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.ClientEndpointConfig;
-import javax.websocket.ContainerProvider;
-import javax.websocket.DeploymentException;
-import javax.websocket.WebSocketContainer;
+import jakarta.websocket.ClientEndpointConfig;
+import jakarta.websocket.ContainerProvider;
+import jakarta.websocket.DeploymentException;
+import jakarta.websocket.WebSocketContainer;
 import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -18,16 +18,16 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.Vector;
 
 /**
  * ClassLoader fetching classes via WebSocket.
  *
  * @author kawasima
  */
-public class WebSocketClassLoader extends ClassLoader {
+public class WebSocketClassLoader extends ClassLoader implements AutoCloseable {
     private ClassLoaderEndpoint endpoint;
     private URL baseUrl;
     private File cacheDirectory;
@@ -120,11 +120,10 @@ public class WebSocketClassLoader extends ClassLoader {
     @Override
     protected Enumeration<URL> findResources(String name) {
         URL url = findResource(name);
-        Vector<URL> urls = new Vector<>();
         if (url != null) {
-            urls.add(url);
+            return Collections.enumeration(List.of(url));
         }
-        return urls.elements();
+        return Collections.emptyEnumeration();
     }
 
 
@@ -166,7 +165,7 @@ public class WebSocketClassLoader extends ClassLoader {
                 int idx = className.lastIndexOf(".");
                 if (idx > 0) {
                     String packageName = className.substring(0, idx);
-                    Package pkg = getPackage(packageName);
+                    Package pkg = getDefinedPackage(packageName);
                     if (pkg == null) {
                         definePackage(packageName, null, null, null, null, null, null, null);
                     }
@@ -181,15 +180,11 @@ public class WebSocketClassLoader extends ClassLoader {
     }
 
     @Override
-    public void finalize() throws Throwable{
-        try {
-            dispose();
-        } finally {
-            super.finalize();
-        }
+    public void close() throws IOException {
+        endpoint.close();
     }
 
     public void dispose() throws IOException {
-        endpoint.close();
+        close();
     }
 }

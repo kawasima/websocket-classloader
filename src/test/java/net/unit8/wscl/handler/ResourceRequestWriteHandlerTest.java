@@ -4,17 +4,14 @@ import net.unit8.wscl.dto.ResourceRequest;
 import net.unit8.wscl.util.FressianUtils;
 import org.fressian.FressianReader;
 import org.fressian.FressianWriter;
-import org.fressian.handlers.ILookup;
-import org.fressian.handlers.ReadHandler;
-import org.fressian.handlers.WriteHandler;
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.Map;
 import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Tests for ResourceRequestWriteHandler.
@@ -28,30 +25,14 @@ public class ResourceRequestWriteHandlerTest {
         ResourceRequest req = new ResourceRequest("hoge");
         UUID uuid = UUID.randomUUID();
         req.setClassLoaderId(uuid);
-        FressianWriter fw = new FressianWriter(baos, new ILookup<Class, Map<String, WriteHandler>>() {
-            @Override
-            public Map<String, WriteHandler> valAt(Class key) {
-                if (key.equals(ResourceRequest.class)) {
-                    return FressianUtils.map(ResourceRequest.class.getName(),
-                            new ResourceRequestWriteHandler());
-                } else {
-                    return null;
-                }
-
-            }
-        });
+        FressianWriter fw = new FressianWriter(baos,
+                key -> key.equals(ResourceRequest.class)
+                        ? FressianUtils.map(ResourceRequest.class.getName(), new ResourceRequestWriteHandler())
+                        : null);
         fw.writeObject(req);
         FressianReader fr = new FressianReader(new ByteArrayInputStream(baos.toByteArray()),
-                new ILookup<Object, ReadHandler>() {
-                    @Override
-                    public ReadHandler valAt(Object key) {
-                        if (key.equals(ResourceRequest.class.getName()))
-                            return new ResourceRequestReadHandler();
-                        else
-                            return null;
-                    }
-                });
+                key -> key.equals(ResourceRequest.class.getName()) ? new ResourceRequestReadHandler() : null);
         ResourceRequest restoredReq = (ResourceRequest) fr.readObject();
-        Assert.assertEquals(uuid, restoredReq.getClassLoaderId());
+        assertEquals(uuid, restoredReq.getClassLoaderId());
     }
 }

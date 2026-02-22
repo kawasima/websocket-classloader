@@ -3,9 +3,7 @@ package net.unit8.wscl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.RemoteEndpoint;
-import javax.websocket.SendHandler;
-import javax.websocket.SendResult;
+import jakarta.websocket.RemoteEndpoint;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
@@ -27,27 +25,27 @@ public class BinaryFrameOutputStream extends OutputStream {
     }
 
     @Override
-    public void write(int b) throws IOException {
+    public synchronized void write(int b) throws IOException {
         if (!buffer.hasRemaining()) flush();
         buffer.put((byte) b);
     }
 
     @Override
-    public void write(@SuppressWarnings("NullableProblems") byte[] bytes, int offset, int length) throws IOException {
+    public synchronized void write(@SuppressWarnings("NullableProblems") byte[] bytes, int offset, int length) throws IOException {
         if (buffer.remaining() < length) flush();
         buffer.put(bytes, offset, length);
     }
 
     @Override
-    public void flush() {
+    public synchronized void flush() {
         if (buffer.position() > 0) {
             buffer.flip();
-            remote.sendBinary(buffer, new SendHandler() {
-                @Override
-                public void onResult(SendResult sendResult) {
-                    if (!sendResult.isOK()) {
-                        logger.error("Failed to send messages.", sendResult.getException());
-                    }
+            ByteBuffer copy = ByteBuffer.allocate(buffer.remaining());
+            copy.put(buffer);
+            copy.flip();
+            remote.sendBinary(copy, sendResult -> {
+                if (!sendResult.isOK()) {
+                    logger.error("Failed to send messages.", sendResult.getException());
                 }
             });
         }
@@ -55,7 +53,7 @@ public class BinaryFrameOutputStream extends OutputStream {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         flush();
     }
 }
